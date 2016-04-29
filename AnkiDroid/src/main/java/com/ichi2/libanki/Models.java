@@ -42,11 +42,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class Models {
+    // 下面三个是用来匹配填空题类型的卡片的正则表达式；
     private static final Pattern fClozePattern1 = Pattern.compile("\\{\\{[^}]*?cloze:(?:[^}]?:)*(.+?)\\}\\}");
     private static final Pattern fClozePattern2 = Pattern.compile("<%cloze:(.+?)%>");
     private static final Pattern fClozeOrdPattern = Pattern.compile("\\{\\{c(\\d+)::.+?\\}\\}");
 
-
+    // 这个是默认笔记类型；
     public static final String defaultModel =
               "{'sortf': 0, "
             + "'did': 1, "
