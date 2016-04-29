@@ -493,6 +493,7 @@ public class Utils {
     public static String joinFields(String[] list) {
         StringBuilder result = new StringBuilder(128);
         for (int i = 0; i < list.length - 1; i++) {
+            // is "u001f" unit separater
             result.append(list[i]).append("\u001f");
         }
         if (list.length > 0) {

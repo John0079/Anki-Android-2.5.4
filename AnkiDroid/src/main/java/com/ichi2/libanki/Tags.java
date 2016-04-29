@@ -215,7 +215,7 @@ public class Tags {
      *
      * @param ids The cards to tag.
      * @param tags List of tags to add/remove. They are space-separated.
-     * @param add True/False to add/remove.
+     * @param
      */
     public void bulkAdd(List<Long> ids, String tags) {
         bulkAdd(ids, tags, true);
@@ -300,7 +300,9 @@ public class Tags {
     }
 
 
-    /** Join tags into a single string, with leading and trailing spaces. */
+    /** Join tags into a single string, with leading and trailing spaces.
+     * 将Tags连接成一个字符串；
+     * */
     public String join(java.util.Collection<String> tags) {
         if (tags == null || tags.size() == 0) {
             return "";
@@ -347,7 +349,9 @@ public class Tags {
      * ***********************************************************
      */
 
-    /** Strip duplicates, adjust case to match existing tags, and sort. */
+    /** Strip duplicates, adjust case to match existing tags, and sort.
+     *  生成一个没有重复的，排过序的Tag结合，并返回，没有细究，有空可以看看；
+     * */
     public TreeSet<String> canonify(List<String> tagList) {
         // NOTE: The python version creates a list of tags, puts them into a set, then sorts them. The TreeSet
         // used here already guarantees uniqueness and sort order, so we return it as-is without those steps.

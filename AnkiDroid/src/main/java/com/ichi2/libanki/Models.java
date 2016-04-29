@@ -470,7 +470,12 @@ public class Models {
     }
 
 
-    /** "Mapping of field name -> (ord, field). */
+    /** "Mapping of field name -> (ord, field).
+     *  比如： 字段有“正面”和“背面”，正面是第一个字段，背面是第二个字段；
+     *  则返回的map集合的第一个元素就是下面的样式：
+     *  { “正面” {0， {name:“正面”， sticky:false, rtl:false, ord:0, font:"Arial", size:20}}}
+     *  { “背面” {1， {name:“背面”， sticky:false, rtl:false, ord:1, font:"Arial", size:20}}}
+     * */
     public Map<String, Pair<Integer, JSONObject>> fieldMap(JSONObject m) {
         JSONArray ja;
         try {
