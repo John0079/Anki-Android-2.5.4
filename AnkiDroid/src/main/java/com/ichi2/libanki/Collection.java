@@ -899,7 +899,7 @@ public class Collection {
         try {
             cur = mDb.getDatabase().rawQuery("SELECT id, mid, flds FROM notes WHERE id IN " + snids, null);
             while (cur.moveToNext()) {
-                result.add(new Object[] { cur.getLong(0), cur.getLong(1), cur.getString(2) });
+                result.add(new Object[]{cur.getLong(0), cur.getLong(1), cur.getString(2)});
             }
         } finally {
             if (cur != null && !cur.isClosed()) {
@@ -960,42 +960,77 @@ public class Collection {
 
     /**
      * Returns hash of id, question, answer.
+     * 返回
      */
     public HashMap<String, String> _renderQA(Object[] data) {
         return _renderQA(data, null, null);
     }
 
-
+    /**
+     * 返回
+     * @param data is [cid, nid, mid, did, ord, tags, flds] 注意，这里的ord是笔记类型中的卡片模板的索引号，
+     * @param qfmt 格式化的问题字符串
+     * @param afmt 格式化的答案字符串；
+     * @return
+     */
     public HashMap<String, String> _renderQA(Object[] data, String qfmt, String afmt) {
         // data is [cid, nid, mid, did, ord, tags, flds]
-        // unpack fields and create dict
+        // unpack fields and create dict，解包flds，生成字段对应值的数组flist
         String[] flist = Utils.splitFields((String) data[6]);
+        // 这个集合fields将记录着，所有的字段名，和这个字段名对应的值；
         Map<String, String> fields = new HashMap<String, String>();
+        // 获取笔记类型的json对象；model
         JSONObject model = mModels.get((Long) data[2]);
+        /** 则返回的map集合的第一个元素就是下面的样式：
+         *  { “正面” {0， {name:“正面”， sticky:false, rtl:false, ord:0, font:"Arial", size:20}}}
+         *  { “背面” {1， {name:“背面”， sticky:false, rtl:false, ord:1, font:"Arial", size:20}}}
+         * */
         Map<String, Pair<Integer, JSONObject>> fmap = mModels.fieldMap(model);
+        // 为fields字段集合中的每个元素遍历赋值；
         for (String name : fmap.keySet()) {
             fields.put(name, flist[fmap.get(name).first]);
         }
         try {
+            // 对于一个笔记，根据笔记类型中的卡片模板类型可以生成多张卡片，
+            // 生成的卡片序号定义为，卡片模板类型的索引号加1；
             int cardNum = ((Integer) data[4]) + 1;
+            // 向字段集合中添加Tags 元素；
             fields.put("Tags", ((String) data[5]).trim());
+            // 向字段集合中添加类型元素，字段集合的类型，就是所在的笔记类型的名字；
             fields.put("Type", (String) model.get("name"));
+            // 为这个字段集合，添加牌组属性，即这个记录属于哪个牌组的；
             fields.put("Deck", mDecks.name((Long) data[3]));
+            // split参数中的-1，意思是；那么模式将被应用尽可能多的次数，而且数组可以是任何长度。
+            // 即，此代码将会将当前的牌组名的每一级别名称分开形成以个数组；
             String[] parents = fields.get("Deck").split("::", -1);
+            // 为这个字段集合，添加子牌组属性，并为其赋值，
             fields.put("Subdeck", parents[parents.length-1]);
+            // 获取这张卡片将对应的卡片模板；
             JSONObject template;
             if (model.getInt("type") == Consts.MODEL_STD) {
+                // 如果是笔记类型的类别是标准版的，则从笔记类型中获取相应的卡片模板；
                 template = model.getJSONArray("tmpls").getJSONObject((Integer) data[4]);
             } else {
+                // 如果不是标准版的，那就是填空题版的，取出笔记类型中的卡片模板的第一个模板，即可；
                 template = model.getJSONArray("tmpls").getJSONObject(0);
             }
+            // 字段集合中添加，一个Card的属性，它将记录着卡片用到的卡片模板的名字；
             fields.put("Card", template.getString("name"));
+            // 把cardNum进行美国的本地化，然后输出前缀加字符c，生成字符串，c1,它将作为一个属性名
+            // 用来记录该卡片已经生成过；
             fields.put(String.format(Locale.US, "c%d", cardNum), "1");
-            // render q & a
+            // render q & a 渲染问题和答案
             HashMap<String, String> d = new HashMap<String, String>();
+            // data is [cid, nid, mid, did, ord, tags, flds]
+            // 获取卡片的id，并将其放入字典
             d.put("id", Long.toString((Long) data[0]));
+            // 判断格式化过的问题，即形参qfmt字符串是否为空？如果为空，则，从卡片模板中获取qfmt,否则用形参提供的格式化过的问题；
+            // 判断格式化过的答案，即形参afmt字符串是否为空？如果为空，怎，从卡片模板中获取afmt,否则用形参提供的格式化过的答案；
             qfmt = TextUtils.isEmpty(qfmt) ? template.getString("qfmt") : qfmt;
             afmt = TextUtils.isEmpty(afmt) ? template.getString("afmt") : afmt;
+            // qfmt : "{{正面}}"
+            // afmt : "{{FrontSide}}\n\n<hr id=answer>\n\n{{背面}}"
+            // 创建一个配对对象数组；并且遍历这个配对数组；
             for (Pair<String, String> p : new Pair[]{new Pair<String, String>("q", qfmt), new Pair<String, String>("a", afmt)}) {
                 String type = p.first;
                 String format = p.second;
@@ -1009,6 +1044,7 @@ public class Collection {
                     fields.put("FrontSide", d.get("q")); // fields.put("FrontSide", mMedia.stripAudio(d.get("q")));
                 }
                 fields = (Map<String, String>) Hooks.runFilter("mungeFields", fields, model, data, this);
+                // Todo_john 这里的Hooks与render（）还不明白，搁置，以后再细究吧！
                 String html = new Template(format, fields).render();
                 d.put(type, (String) Hooks.runFilter("mungeQA", html, type, fields, model, data, this));
                 // empty cloze?
@@ -1019,6 +1055,10 @@ public class Collection {
                     }
                 }
             }
+            // 最终d中保存三个元素，它是个字典：具体内容：
+            // "q"->"今天星期几啊"
+            // "a"->"今天星期几呀\n\n<hr id=answer>\n\n星期三吧"
+            // "id"->"41276839263"
             return d;
         } catch (JSONException e) {
             throw new RuntimeException(e);

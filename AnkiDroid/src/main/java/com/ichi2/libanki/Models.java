@@ -196,11 +196,14 @@ public class Models {
      * 由此可以看出，模型和模板的不同之处，模型即笔记类型，它包含笔记的概念，包含笔记字段的概念，包含卡片模板的
      * 概念，这里的卡片模板旗标，用到当前笔记类型的笔记，是否要再次生成相应的卡片呢？
      * 如果是，则，用到此笔记类型的笔记，将再次按照笔记类型中指定的卡片模板生成相应卡片；
+     * 一句话总结： 此方法作用是：
      */
     public void save(JSONObject m, boolean templates) {
         if (m != null && m.has("id")) {
             try {
+                // 为这个笔记类型设置最后修改时间 mod字段；
                 m.put("mod", Utils.intNow());
+                // 为这个笔记类型设置 usn 属性值，这个属性值来自于collection
                 m.put("usn", mCol.usn());
                 // TODO: fix empty id problem on _updaterequired (needed for model adding)
                 if (m.getLong("id") != 0) {
@@ -359,17 +362,22 @@ public class Models {
      * 删除一个笔记类型，连带使用这个笔记类型的note,以及card都删除掉；
      * @throws ConfirmModSchemaException */
     public void rem(JSONObject m) throws ConfirmModSchemaException {
+        // 修改col中的schema 用于强制同步；
         mCol.modSchema(true);
         try {
             long id = m.getLong("id");
+            // 当前的笔记类型是要删除的笔记类型吗？
             boolean current = current().getLong("id") == id;
-            // delete notes/cards
+            // delete notes/cards 删除笔记和卡片
             mCol.remCards(Utils.arrayList2array(mCol.getDb().queryColumn(Long.class,
+                    // 从数据库中筛选出用到这个笔记类型的笔记，然后衰选出用到这些笔记的卡片，统统删除；
                     "SELECT id FROM cards WHERE nid IN (SELECT id FROM notes WHERE mid = " + id + ")", 0)));
-            // then the model
+            // then the model，删除个这笔记类型；
             mModels.remove(id);
+            // 相当于save(null, false) 作用在于，标记mChanged==true;即，标记Model这个对象已被修改过；
             save();
             // GUI should ensure last model is not deleted
+            // 如果当前的笔记类型，就是要删除的笔记类型，则删除完之后把当前的笔记类型设置为笔记类型集合中的第一个值；
             if (current) {
                 setCurrent(mModels.values().iterator().next());
             }
@@ -378,16 +386,22 @@ public class Models {
         }
     }
 
-
+    // 添加一个笔记类型；
     public void add(JSONObject m) {
+        // 为m这个笔记类型设置个唯一的id ;
         _setID(m);
+        // 更新mModel，向这个集合中添加一个新的笔记类型元素 m
         update(m);
+        // 设置m 为当前的笔记类型；
         setCurrent(m);
+        // 保存m,
         save(m);
     }
 
 
-    /** Add or update an existing model. Used for syncing and merging. */
+    /** Add or update an existing model. Used for syncing and merging.
+     * 向mModel这个集合中添加一个新的 笔记类型 model 元素；
+     * */
     public void update(JSONObject m) {
         try {
             mModels.put(m.getLong("id"), m);
@@ -398,7 +412,7 @@ public class Models {
         save();
     }
 
-
+    // 为 笔记类型这个对象设置一个id，唯一的；
     private void _setID(JSONObject m) {
         long id = Utils.intNow(1000);
         while (mModels.containsKey(id)) {
@@ -1080,17 +1094,20 @@ public class Models {
 
     private void _updateRequired(JSONObject m) {
         try {
+            // 如果是填空题类型，则什么都不做；
             if (m.getInt("type") == Consts.MODEL_CLOZE) {
                 // nothing to do
                 return;
             }
             JSONArray req = new JSONArray();
+            // 创建一个字符串集合，flds,它将保存着该笔记类型的所有字段名称；
             ArrayList<String> flds = new ArrayList<String>();
             JSONArray fields;
             fields = m.getJSONArray("flds");
             for (int i = 0; i < fields.length(); i++) {
                 flds.add(fields.getJSONObject(i).getString("name"));
             }
+            // 获取形参 笔记类型的 卡片模板字段；
             JSONArray templates = m.getJSONArray("tmpls");
             for (int i = 0; i < templates.length(); i++) {
                 JSONObject t = templates.getJSONObject(i);
@@ -1107,23 +1124,40 @@ public class Models {
         }
     }
 
-
+    /**
+     *
+     * @param m 是Model ,是笔记类型；
+     * @param flds  是笔记类型中的字段名称的集合；
+     * @param t 是笔记类型中的 卡片模板中的某一个；
+     * @return 这个卡片模板中需要的字段；new Object[] { "none", new JSONArray(), new JSONArray() };
+     */
     private Object[] _reqForTemplate(JSONObject m, ArrayList<String> flds, JSONObject t) {
         try {
             ArrayList<String> a = new ArrayList<String>();
             ArrayList<String> b = new ArrayList<String>();
+            // flds 是一个字符串集合，它保存着当前笔记类型的所有字段名称；
+            // for循环 结束，a , b 都有与flds一样多的元素，
             for (String f : flds) {
                 a.add("ankiflag");
                 b.add("");
             }
             Object[] data;
+            // a.toArray(new String[a.size()]) 将a这个字符串集合变成数组，
+            // 则Utils.joinFields(a.toArray(new String[a.size()]))的结果
+            // 将是"ankiflag\u001fankiflag\u001f", 它将作为每个字段的实际值生成的字符串flds，然后被传出去；
+            // data is [cid, nid, mid, did, ord, tags, flds]
             data = new Object[] { 1l, 1l, m.getLong("id"), 1l, t.getInt("ord"), "",
                     Utils.joinFields(a.toArray(new String[a.size()])) };
+            // _renderQA(data)返回保存三个元素的字典：具体内容：
+            // "q"->"ankiflag"
+            // "a"->"ankiflag\n\n<hr id=answer>\n\nankiflag"
+            // "id"->"1l"
             String full = mCol._renderQA(data).get("q");
             data = new Object[] { 1l, 1l, m.getLong("id"), 1l, t.getInt("ord"), "",
                     Utils.joinFields(b.toArray(new String[b.size()])) };
             String empty = mCol._renderQA(data).get("q");
             // if full and empty are the same, the template is invalid and there is no way to satisfy it
+            // 如果full 和 empty 是相同的，则卡片模板无效，没有办法去满足它
             if (full.equals(empty)) {
                 return new Object[] { "none", new JSONArray(), new JSONArray() };
             }
@@ -1137,10 +1171,12 @@ public class Models {
                 data[6] = Utils.joinFields(tmp.toArray(new String[tmp.size()]));
                 // if no field content appeared, field is required
                 if (!mCol._renderQA(data).get("q").contains("ankiflag")) {
+                    //如果不包含ankiflag,说明，则其他字段都没有参与到question中，则，这个时候当前字段必须参与到question中；
                     req.put(i);
                 }
             }
             if (req.length() > 0) {
+                // 这种情况，问题question中需要一个字段，我们返回{"all", req}
                 return new Object[] { type, req };
             }
             // if there are no required fields, switch to any mode
