@@ -337,6 +337,7 @@ public class Collection {
 
 
     /** Note: not in libanki.
+     * 标记一个修改过的schema，用于强制同步；
      * Mark schema modified to force a full sync, but with the confirmation checking function disabled
      * This is a convenience method which doesn't throw ConfirmModSchemaException
      */
@@ -350,6 +351,7 @@ public class Collection {
     }
 
     /** Mark schema modified to force a full sync.
+     * 标记一个修改过的schema，用于强制同步；
      * ConfirmModSchemaException will be thrown if the user needs to be prompted to confirm the action.
      * If the user chooses to confirm then modSchema(false) should be called, after which the exception can
      * be safely ignored, and the outer code called again.
@@ -360,6 +362,7 @@ public class Collection {
     }
 
     /** Mark schema modified to force a full sync.
+     * 标记一个修改过的schema，用于强制同步；
      * If check==true and the schema has not already been marked modified then ConfirmModSchemaException will be thrown.
      * If the user chooses to confirm then modSchema(false) should be called, after which the exception can
      * be safely ignored, and the outer code called again.

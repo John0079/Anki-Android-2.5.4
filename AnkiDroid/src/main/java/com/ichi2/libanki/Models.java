@@ -75,34 +75,46 @@ public class Models {
             + " background-color: white;\\n"
             + "}\""
             + "}";
-
+    // 默认的字段样式；
     private static final String defaultField = "{'name': \"\", " + "'ord': null, " + "'sticky': False, " +
     // the following alter editing, and are used as defaults for the template wizard
+            // 以下的编辑，用来做默认字段模板制作向导
             "'rtl': False, " + "'font': \"Arial\", " + "'size': 20, " +
-            // reserved for future use
+            // reserved for future use 保留字段，未来可能使用到；
             "'media': [] }";
-
+    // 默认卡片模板；
     private static final String defaultTemplate = "{'name': \"\", " + "'ord': null, " + "'qfmt': \"\", "
             + "'afmt': \"\", " + "'did': null, " + "'bqfmt': \"\"," + "'bafmt': \"\"," + "'bfont': \"Arial\"," +
             "'bsize': 12 }";
 
     // /** Regex pattern used in removing tags from text before diff */
+    // 这些正则表达式，当你从文本中删除标签的时候用得到；
     // private static final Pattern sFactPattern = Pattern.compile("%\\([tT]ags\\)s");
     // private static final Pattern sModelPattern = Pattern.compile("%\\(modelTags\\)s");
     // private static final Pattern sTemplPattern = Pattern.compile("%\\(cardModel\\)s");
 
     private Collection mCol;
+    // 当前笔记类型是否被改变过；
     private boolean mChanged;
+    // 笔记模板，它将记录着整个collection的所有笔记类型，并保存在一个map集合中；
     private HashMap<Long, JSONObject> mModels;
 
     // BEGIN SQL table entries
+    // 笔记类型的Id
     private int mId;
+    // 笔记类型的名字；
     private String mName = "";
+    // 创建时间；
     private long mCrt = Utils.intNow();
+    // 修改时间
     private long mMod = Utils.intNow();
+    // Todo_john 这个参数 mConf没用到过；
     private JSONObject mConf;
+    // Todo_john 这个参数 mCss也没用到过；
     private String mCss = "";
+    // Todo_john 这个参数还是没用用到过；
     private JSONArray mFields;
+    // Todo_john 这个参数还是没用用到过；
     private JSONArray mTemplates;
     // BEGIN SQL table entries
 
@@ -110,6 +122,7 @@ public class Models {
     // private AnkiDb mDb;
     //
     /** Map for compiled Mustache Templates */
+    // Todo_john 编译模板的集合，不懂；看看再说；从未用到过；
     private Map<String, Template> mCmpldTemplateMap = new HashMap<String, Template>();
 
 
@@ -135,7 +148,7 @@ public class Models {
      * Saving/loading registry
      * ***********************************************************************************************
      */
-
+    // 看来，笔记类型等价于集合，它只有与集合绑定在一起，再有意义，因此，构造方法定义出集合即可；
     public Models(Collection col) {
         mCol = col;
     }
@@ -143,6 +156,7 @@ public class Models {
 
     /**
      * Load registry from JSON.
+     * 由json字符串生成mModels笔记类型的集合；
      */
     public void load(String json) {
         mChanged = false;
@@ -176,9 +190,12 @@ public class Models {
     }
 
     /**
-     * Save a model
+     * Save a model 保存一个笔记类型；
      * @param m model to save
      * @param templates flag which (when true) re-generates the cards for each note which uses the model
+     * 由此可以看出，模型和模板的不同之处，模型即笔记类型，它包含笔记的概念，包含笔记字段的概念，包含卡片模板的
+     * 概念，这里的卡片模板旗标，用到当前笔记类型的笔记，是否要再次生成相应的卡片呢？
+     * 如果是，则，用到此笔记类型的笔记，将再次按照笔记类型中指定的卡片模板生成相应卡片；
      */
     public void save(JSONObject m, boolean templates) {
         if (m != null && m.has("id")) {
@@ -204,6 +221,7 @@ public class Models {
 
     /**
      * Flush the registry if any models were changed.
+     * 将改变过的model写到数据库中；
      */
     public void flush() {
         if (mChanged) {
@@ -225,11 +243,12 @@ public class Models {
 
     /**
      * Retrieving and creating models
+     * 检索和创建笔记类型
      * ***********************************************************************************************
      */
 
     /**
-     * Get current model.
+     * Get current model.获取当前的笔记类型
      * @return The JSONObject of the model, or null if not found in the deck and in the configuration.
      */
     public JSONObject current() {
@@ -237,7 +256,7 @@ public class Models {
     }
 
     /**
-     * Get current model.
+     * Get current model.获取当前牌组（记忆库）的笔记类型；
      * @param forDeck If true, it tries to get the deck specified in deck by mid, otherwise or if the former is not
      *                found, it uses the configuration`s field curModel.
      * @return The JSONObject of the model, or null if not found in the deck and in the configuration.
@@ -245,12 +264,16 @@ public class Models {
     public JSONObject current(boolean forDeck) {
         JSONObject m = null;
         if (forDeck) {
+            // 通过当前牌组获得当前笔记类型；
             m = get(mCol.getDecks().current().optLong("mid", -1));
         }
         if (m == null) {
+            // 如果不能够从当前牌组中获得笔记类型，则可以通过col中的conf字段的属性值
+            // curModel来确定当前笔记类型；
             m = get(mCol.getConf().optLong("curModel", -1));
         }
         if (m == null) {
+            // 如果还得不到当前笔记类型，则可以取出笔记类型集合，并取出集合中的第一个笔记类型；
             if (!mModels.isEmpty()) {
                 m = mModels.values().iterator().next();
             }
@@ -258,7 +281,7 @@ public class Models {
         return m;
     }
 
-
+    // 设置当前笔记类型；拿出col中的conf字段，为其curModel属性赋值，
     public void setCurrent(JSONObject m) {
         try {
             mCol.getConf().put("curModel", m.get("id"));
@@ -269,7 +292,9 @@ public class Models {
     }
 
 
-    /** get model with ID, or none. */
+    /** get model with ID, or none.
+     * 通过id获取笔记类型；
+     * */
     public JSONObject get(long id) {
         if (mModels.containsKey(id)) {
             return mModels.get(id);
@@ -279,7 +304,9 @@ public class Models {
     }
 
 
-    /** get all models */
+    /** get all models
+     * 获取所有的笔记类型，返回一个承载json对象的集合；
+     * */
     public ArrayList<JSONObject> all() {
         ArrayList<JSONObject> models = new ArrayList<JSONObject>();
         Iterator<JSONObject> it = mModels.values().iterator();
@@ -290,7 +317,9 @@ public class Models {
     }
 
 
-    /** get model with NAME. */
+    /** get model with NAME.
+     * 通过笔记类型的名字来获取json对象类型的笔记类型；
+     * */
     public JSONObject byName(String name) {
         for (JSONObject m : mModels.values()) {
             try {
@@ -305,7 +334,9 @@ public class Models {
     }
 
 
-    /** Create a new model, save it in the registry, and return it. */
+    /** Create a new model, save it in the registry, and return it.
+     * 创建一个新的笔记类型；并以json对象类型返回；
+     * */
     public JSONObject newModel(String name) {
         // caller should call save() after modifying
         JSONObject m;
@@ -324,7 +355,8 @@ public class Models {
     }
 
 
-    /** Delete model, and all its cards/notes. 
+    /** Delete model, and all its cards/notes.
+     * 删除一个笔记类型，连带使用这个笔记类型的note,以及card都删除掉；
      * @throws ConfirmModSchemaException */
     public void rem(JSONObject m) throws ConfirmModSchemaException {
         mCol.modSchema(true);
