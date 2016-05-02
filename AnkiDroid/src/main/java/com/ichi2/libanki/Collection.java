@@ -438,17 +438,22 @@ public class Collection {
 
     /**
      * Utils ******************************************************************** ***************************
+     * 在这里用到这个方法： data.add(new Object[] { ts, nid, did, tord, now, usn, nextID("pos") });
+     * 就此代码，分析；
      */
 
     public int nextID(String type) {
         type = "next" + Character.toUpperCase(type.charAt(0)) + type.substring(1);
+        // type --> "nextPos"
         int id;
         try {
+            // 取出col表中conf字段的nextPos属性值；
             id = mConf.getInt(type);
         } catch (JSONException e) {
             id = 1;
         }
         try {
+            // 取出col表中conf字段的nextPos属性值；并对此属性值累加1；并返回这个值；
             mConf.put(type, id + 1);
         } catch (JSONException e) {
             throw new RuntimeException(e);
@@ -608,17 +613,23 @@ public class Collection {
 
     /**
      * Generate cards for non-empty templates, return ids to remove.
+     * 对传入的笔记集合，重新生成他们的卡片，返回需要删除的卡片的id集合；
      */
 	public ArrayList<Long> genCards(List<Long> nids) {
 	    return genCards(Utils.arrayList2array(nids));
 	}
+    // 将传入的笔记id数组，逐个产生所对应的卡片
     public ArrayList<Long> genCards(long[] nids) {
-        // build map of (nid,ord) so we don't create dupes
+        // build map of (nid,ord) so we don't create dupes，创建一个字典，放置笔记id,和卡片模板序号，避免重复生成；
+        // 将笔记的id连成一个字符串；snids
         String snids = Utils.ids2str(nids);
+        // have中将保存<nid <ord cid>>
         HashMap<Long, HashMap<Integer, Long>> have = new HashMap<Long, HashMap<Integer, Long>>();
+        // dids将保存<nid, did>
         HashMap<Long, Long> dids = new HashMap<Long, Long>();
         Cursor cur = null;
         try {
+            // 从卡片表中取出形参给的笔记的Id的所有对应卡片，并取出卡片id，笔记id，牌组id，卡片模板序列号这些字段；
             cur = mDb.getDatabase().rawQuery("SELECT id, nid, ord, did FROM cards WHERE nid IN " + snids, null);
             while (cur.moveToNext()) {
                 // existing cards
@@ -626,19 +637,25 @@ public class Collection {
                 if (!have.containsKey(nid)) {
                     have.put(nid, new HashMap<Integer, Long>());
                 }
+                // have中将保存<nid <ord cid>>
                 have.get(nid).put(cur.getInt(2), cur.getLong(0));
                 // and their dids
                 long did = cur.getLong(3);
                 if (dids.containsKey(nid)) {
                     if (dids.get(nid) != 0 && dids.get(nid) != did) {
                         // cards are in two or more different decks; revert to model default
+                        // 一个笔记生成的多张卡片分布在多个不同的牌组中，这时恢复默认模型；即，将当前笔记对应的
+                        // 牌组的id，设置为0；
                         dids.put(nid, 0l);
                     }
                 } else {
                     // first card or multiple cards in same deck
+                    // 当dids中不包含nid这样的key ,就把<nid, did>放入到dids中；
                     dids.put(nid, did);
                 }
             }
+            // 结果得到一个did的map集合，这个集合中，nid与did一一对应，每个note,属于一个deck;
+            // 也就是说一个笔记不能被多个deck所有，一个deck也不能有重复的note
         } finally {
             if (cur != null && !cur.isClosed()) {
                 cur.close();
@@ -646,51 +663,72 @@ public class Collection {
         }
         // build cards for each note
         ArrayList<Object[]> data = new ArrayList<Object[]>();
+        // 获得一个安全的，不会被重复的id，ts
         long ts = Utils.maxID(mDb);
         long now = Utils.intNow();
         ArrayList<Long> rem = new ArrayList<Long>();
+        // usn 唯一序列号，unique serial number;
         int usn = usn();
         cur = null;
         try {
             cur = mDb.getDatabase().rawQuery("SELECT id, mid, flds FROM notes WHERE id IN " + snids, null);
             while (cur.moveToNext()) {
                 JSONObject model = mModels.get(cur.getLong(1));
+                /** 给一个笔记类型，和字段值，字段值被连接成字符串，返回一个可用的卡片模型索引号集合； */
                 ArrayList<Integer> avail = mModels.availOrds(model, cur.getString(2));
                 long nid = cur.getLong(0);
+                // 找到当前笔记所在的牌组的id，即Deck的id
                 long did = dids.get(nid);
                 if (did == 0) {
+                    //如果没有找到当前笔记所在的牌组，则把笔记放入到笔记所在的笔记类型的did属性所指示的牌组中，
                     did = model.getLong("did");
                 }
-                // add any missing cards
+                // add any missing cards 添加错过的卡片；
                 for (JSONObject t : _tmplsFromOrds(model, avail)) {
                     int tord = t.getInt("ord");
+                    // have中将保存<nid <ord cid>>
+                    // dohave反应了，nid的第tord个卡片模板对应的卡片是否被生成；
                     boolean doHave = have.containsKey(nid) && have.get(nid).containsKey(tord);
                     if (!doHave) {
-                        // check deck is not a cram deck
+                        // 如果nid的第tord个卡片模板对应的卡片没有生成；则。。。
                         long ndid;
                         try {
+                            // ndid对应着卡片模板着的那个did的属性值；
+                            // ndid也可理解为此卡片模板对应的那个牌组的id；
                             ndid = t.getLong("did");
                             if (ndid != 0) {
+                                // 如果卡片模板包含有牌组id，则此笔记所在的牌组id也变成这个牌组id;
                                 did = ndid;
                             }
                         } catch (JSONException e) {
                             // do nothing
                         }
                         if (getDecks().isDyn(did)) {
+                            // 判断当前笔记的牌组，是不是动态牌组，如果是，则这条笔记所在的牌组的id设置为1；
                             did = 1;
                         }
                         // if the deck doesn't exist, use default instead
+                        // Todo_john 为什么要写这么一句，不是多此一举吗？did = mDecks.get(did).getLong("id");
+                        // 或者是用来判断这个did是合法的did？
                         did = mDecks.get(did).getLong("id");
-                        // we'd like to use the same due# as sibling cards, but we can't retrieve that quickly, so we
-                        // give it a new id instead
+                        /**
+                         * we'd like to use the same due# as sibling cards, but we can't retrieve that quickly, so we
+                         * give it a new id instead
+                         * 我们不想让这个卡片和它的兄弟卡片有同样的过期时间，我们又不能很快地回复，于是我们给它一个新的id去代替；
+                         * 这里的data  ArrayList<Object[]> data = new ArrayList<Object[]>(); 它是一个集合，它保存着当前笔记生成的所有新卡片的信息；
+                         * nextID("pos")这个值是 取出col表中conf字段的nextPos属性值累加1的结果；
+                         */
                         data.add(new Object[] { ts, nid, did, tord, now, usn, nextID("pos") });
                         ts += 1;
                     }
                 }
                 // note any cards that need removing
+                // have中将保存<nid <ord cid>>
                 if (have.containsKey(nid)) {
                     for (Map.Entry<Integer, Long> n : have.get(nid).entrySet()) {
                         if (!avail.contains(n.getKey())) {
+                            // 如果可用的卡片模板中，不包含这个卡片模板的索引号，则，此卡片模板对应的那个卡片应该被删除；
+                            // 则放入rem集合中，rem即，remove;
                             rem.add(n.getValue());
                         }
                     }
@@ -834,10 +872,12 @@ public class Collection {
 
     /**
      * Bulk delete cards by ID.
+     * 批量删除卡片
      */
     public void remCards(long[] ids) {
     	remCards(ids, true);
     }
+    // 批量删除卡片
     public void remCards(long[] ids, boolean notes) {
         if (ids.length == 0) {
             return;
@@ -848,10 +888,11 @@ public class Collection {
         // remove cards
         _logRem(ids, Consts.REM_CARD);
         mDb.execute("DELETE FROM cards WHERE id IN " + sids);
-        // then notes
+        // then notes 是否将没有卡片的笔记也一同删除了，
         if (!notes) {
         	return;
         }
+        // 找出那些没有卡片的笔记，一并删除；
         nids = Utils
                 .arrayList2array(mDb.queryColumn(Long.class, "SELECT id FROM notes WHERE id IN " + Utils.ids2str(nids)
                         + " AND id NOT IN (SELECT nid FROM cards)", 0));
@@ -890,7 +931,7 @@ public class Collection {
 
     /**
      * Field checksums and sorting fields ***************************************
-     * ********************************************************
+     * 有给定的nids，去notes表中查询出相关note的，id，mid,以及flds信息，并写入一个集合返回；
      */
 
     private ArrayList<Object[]> _fieldData(String snids) {
@@ -910,10 +951,13 @@ public class Collection {
     }
 
 
-    /** Update field checksums and sort cache, after find&replace, etc. */
+    /** Update field checksums and sort cache, after find&replace, etc.
+     * 更新数据库笔记表中的内容，特别是更新排序字段，和csum字段，此字段由flds第一个值得哈希值而来，可以避免笔记重复；
+     * */
     public void updateFieldCache(long[] nids) {
         String snids = Utils.ids2str(nids);
         ArrayList<Object[]> r = new ArrayList<Object[]>();
+        // _fieldData 方法从给定的nids，去notes表中查询出相关note的，id，mid,以及flds信息，并写入一个集合返回；
         for (Object[] o : _fieldData(snids)) {
             String[] fields = Utils.splitFields((String) o[2]);
             JSONObject model = mModels.get((Long) o[1]);
@@ -921,9 +965,13 @@ public class Collection {
                 // note point to invalid model
                 continue;
             }
+            // Utils.stripHTML()的作用是： 剥掉html标签，只留下输入字符串纯文本信息
+            // Utils.fieldChecksum(fields[0])这个方法作用是，用于字段检验，它将一个字符串变成哈希值，但只取前8位，o[0]是笔记的id,
+            // o[0]是当前笔记的id,
             r.add(new Object[] { Utils.stripHTML(fields[mModels.sortIdx(model)]), Utils.fieldChecksum(fields[0]), o[0] });
         }
         // apply, relying on calling code to bump usn+mod
+        // 更新数据库notes表中的sfld字段和csum字段，csum字段用来避免note的重复；
         mDb.executeMany("UPDATE notes SET sfld=?, csum=? WHERE id=?", r);
     }
 

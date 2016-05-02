@@ -184,7 +184,7 @@ public class Models {
         save(null, false);
     }
 
-
+    // 保存笔记类型；
     public void save(JSONObject m) {
         save(m, false);
     }
@@ -207,9 +207,11 @@ public class Models {
                 m.put("usn", mCol.usn());
                 // TODO: fix empty id problem on _updaterequired (needed for model adding)
                 if (m.getLong("id") != 0) {
+                    // 更新笔记类型的req属性，这个属性记录着每个卡片模板的正面所需的字段信息；
                     _updateRequired(m);
                 }
                 if (templates) {
+                    // 为每用到这个笔记类型的笔记，重新生成卡片；
                     _syncTemplates(m);
                 }
             } catch (JSONException e) {
@@ -425,12 +427,12 @@ public class Models {
         }
     }
 
-
+    // 是否包含参数中id值得笔记模型？
     public boolean have(long id) {
         return mModels.containsKey(id);
     }
 
-
+    // 当前牌组集合中所有笔记类型的id组成的数组
     public long[] ids() {
         Iterator<Long> it = mModels.keySet().iterator();
         long[] ids = new long[mModels.size()];
@@ -447,7 +449,9 @@ public class Models {
      * Tools ***********************************************************************************************
      */
 
-    /** Note ids for M */
+    /** Note ids for M
+     * 返回所有用到此笔记类型的笔记
+     * */
     public ArrayList<Long> nids(JSONObject m) {
         try {
             return mCol.getDb().queryColumn(Long.class, "SELECT id FROM notes WHERE mid = " + m.getLong("id"), 0);
@@ -457,7 +461,7 @@ public class Models {
     }
 
     /**
-     * Number of notes using m
+     * Number of notes using m 用到此笔记类型的笔记总条数；
      * @param m The model to the count the notes of.
      * @return The number of notes with that model.
      */
@@ -470,7 +474,7 @@ public class Models {
     }
 
     /**
-     * Number of notes using m
+     * Number of notes using m 用到指定笔记类型，并且使用其中一个卡片模板而生成的卡片的数量；
      * @param m The model to the count the notes of.
      * @param ord The index of the card template
      * @return The number of notes with that model.
@@ -487,7 +491,9 @@ public class Models {
      * Copying ***********************************************************************************************
      */
 
-    /** Copy, save and return. */
+    /** Copy, save and return.
+     * 拷贝一个笔记类型；
+     * */
     public JSONObject copy(JSONObject m) {
         JSONObject m2 = null;
         try {
@@ -503,6 +509,7 @@ public class Models {
 
     /**
      * Fields ***********************************************************************************************
+     * 添加一个新的字段，字段名字为name;
      */
 
     public JSONObject newField(String name) {
@@ -539,7 +546,7 @@ public class Models {
         }
     }
 
-
+    // 返回包含字段名字的集合；
     public ArrayList<String> fieldNames(JSONObject m) {
         JSONArray ja;
         try {
@@ -555,7 +562,7 @@ public class Models {
 
     }
 
-
+    // 返回笔记类型的排序字段，即这个笔记类型下的笔记，将以那个字段进行排序
     public int sortIdx(JSONObject m) {
         try {
             return m.getInt("sortf");
@@ -564,9 +571,10 @@ public class Models {
         }
     }
 
-
+    // 设置笔记类型的排序字段；
     public void setSortIdx(JSONObject m, int idx) throws ConfirmModSchemaException{
         try {
+            // 标记修改过的schema，用于强制同步；
             mCol.modSchema(true);
             m.put("sortf", idx);
             mCol.updateFieldCache(Utils.toPrimitive(nids(m)));
@@ -576,7 +584,7 @@ public class Models {
         }
     }
 
-
+    // 为一个笔记类型添加新的字段；
     public void addField(JSONObject m, JSONObject field) throws ConfirmModSchemaException {
         // only mod schema if model isn't new
         try {
@@ -586,6 +594,7 @@ public class Models {
             JSONArray ja = m.getJSONArray("flds");
             ja.put(field);
             m.put("flds", ja);
+            // 也可称为跟新修改每个字段的索引
             _updateFieldOrds(m);
             save(m);
             _transformFields(m, new TransformFieldAdd());
@@ -595,8 +604,14 @@ public class Models {
 
     }
 
+    /**
+     * 创建一个新的字段数组，新的字段数组从传进来的字段数组中拷贝元素过来，并在最后添加一个新的控元素；
+     */
     class TransformFieldAdd implements TransformFieldVisitor {
         @Override
+        /**
+         * 创建一个新的字段数组，新的字段数组从传进来的字段数组中拷贝元素过来，并在最后添加一个新的控元素；
+         */
         public String[] transform(String[] fields) {
             String[] f = new String[fields.length + 1];
             System.arraycopy(fields, 0, f, 0, fields.length);
@@ -637,6 +652,11 @@ public class Models {
 
     }
 
+    /**
+     * 创建一个新的字段集合，此字段集合从形参中的字段数组转换而来，
+     * 从这个新建立的字段数组中删除指定索引的那个字段，
+     * 删除后将新的字段集合变成数组，将其返回
+     */
     class TransformFieldDelete implements TransformFieldVisitor {
         private int idx;
 
@@ -647,6 +667,11 @@ public class Models {
 
 
         @Override
+        /**
+         * 创建一个新的字段集合，此字段集合从形参中的字段数组转换而来，
+         * 从这个新建立的字段数组中删除指定索引的那个字段，
+         * 删除后将新的字段集合变成数组，将其返回
+         */
         public String[] transform(String[] fields) {
             ArrayList<String> fl = new ArrayList<String>(Arrays.asList(fields));
             fl.remove(idx);
@@ -654,11 +679,19 @@ public class Models {
         }
     }
 
-
+    /**
+     * 移动字段集合中，有个字段的位置，
+     * @param m 笔记类型model
+     * @param field 某个字段的具体内容，
+     * @param idx 字段的索引
+     * @throws ConfirmModSchemaException
+     */
     public void moveField(JSONObject m, JSONObject field, int idx) throws ConfirmModSchemaException {
+        // 标记schema改变，用来强制同步
         mCol.modSchema(true);
         try {
             JSONArray ja = m.getJSONArray("flds");
+            // l用来承载新的flds内容，
             ArrayList<JSONObject> l = new ArrayList<JSONObject>();
             int oldidx = -1;
             for (int i = 0; i < ja.length(); ++i) {
@@ -670,22 +703,27 @@ public class Models {
                     }
                 }
             }
-            // remember old sort field
+            // remember old sort field 记录下用于排序的字段，并且取出来将其变成字符串；
             String sortf = Utils.jsonToString(m.getJSONArray("flds").getJSONObject(m.getInt("sortf")));
             // move
             l.remove(oldidx);
             l.add(idx, field);
+            // 更新medol中flds属性的值；
             m.put("flds", new JSONArray(l));
             // restore sort field
             ja = m.getJSONArray("flds");
+            // 重新对model中的排序字段赋值；
             for (int i = 0; i < ja.length(); ++i) {
                 if (Utils.jsonToString(ja.getJSONObject(i)).equals(sortf)) {
                     m.put("sortf", i);
                     break;
                 }
             }
+            // 更新每个字段的索引号
             _updateFieldOrds(m);
+            // 保存这个笔记类型；
             save(m);
+            //在数据库中更新此model涉及的notes记录；
             _transformFields(m, new TransformFieldMove(idx, oldidx));
         } catch (JSONException e) {
             throw new RuntimeException(e);
@@ -693,6 +731,9 @@ public class Models {
 
     }
 
+    /**
+     * 移动字典数组中的位置，即，把某个字段放到新的索引位置，其他的字段怎么变动不用管；
+     */
     class TransformFieldMove implements TransformFieldVisitor {
         private int idx;
         private int oldidx;
@@ -705,6 +746,9 @@ public class Models {
 
 
         @Override
+        /**
+         * 移动字典数组中的位置，即，把某个字段放到新的索引位置，其他的字段怎么变动不用管；
+         */
         public String[] transform(String[] fields) {
             String val = fields[oldidx];
             ArrayList<String> fl = new ArrayList<String>(Arrays.asList(fields));
@@ -715,9 +759,12 @@ public class Models {
     }
 
 
+    // 对笔记类型中的m，中的字段field，重新命名；
     public void renameField(JSONObject m, JSONObject field, String newName) throws ConfirmModSchemaException {
+        // 标记一个修改过的schema，用于强制同步；
         mCol.modSchema(true);
         try {
+            // Todo_john Pattern.quote(field.getString("name"))的结果是 "\Q"+name+"\E", 但这是为什么呢？
             String pat = String.format("\\{\\{([^{}]*)([:#^/]|[^:#/^}][^:}]*?:|)%s\\}\\}",
                     Pattern.quote(field.getString("name")));
             if (newName == null) {
@@ -726,6 +773,7 @@ public class Models {
             String repl = "{{$1$2" + newName + "}}";
 
             JSONArray tmpls = m.getJSONArray("tmpls");
+            // 更新所有卡片模板中的字段名
             for (int i = 0; i < tmpls.length(); ++i) {
                 JSONObject t = tmpls.getJSONObject(i);
                 for (String fmt : new String[] { "qfmt", "afmt" }) {
@@ -743,7 +791,7 @@ public class Models {
         save(m);
     }
 
-
+    // 更新笔记类型中字段属性下的所有字段的顺序号，也可称为跟新修改每个字段的索引
     public void _updateFieldOrds(JSONObject m) {
         JSONArray ja;
         try {
@@ -757,11 +805,13 @@ public class Models {
         }
     }
 
+    // 这是个接口，可理解为匿名分类；它的作用是--字段迁移参观者；
     interface TransformFieldVisitor {
         public String[] transform(String[] fields);
     }
 
 
+    // 更新这个笔记类型model所涉及的笔记，特别是字段flds的修改，并将此更新写入数据库notes表中；
     public void _transformFields(JSONObject m, TransformFieldVisitor fn) {
         // model hasn't been added yet?
         try {
@@ -772,10 +822,12 @@ public class Models {
             Cursor cur = null;
 
             try {
+                // 从notes表中查出所有使用该笔记类型的笔记来；
                 cur = mCol.getDb().getDatabase()
                         .rawQuery("select id, flds from notes where mid = " + m.getLong("id"), null);
                 while (cur.moveToNext()) {
                     r.add(new Object[] {
+                            // fn.transform(Utils.splitFields(cur.getString(1)) 返回一个新的字段数组；
                             Utils.joinFields((String[]) fn.transform(Utils.splitFields(cur.getString(1)))),
                             Utils.intNow(), mCol.usn(), cur.getLong(0) });
                 }
@@ -793,6 +845,7 @@ public class Models {
 
     /**
      * Templates ***********************************************************************************************
+     * 创建新的卡片模板；
      */
 
     public JSONObject newTemplate(String name) {
@@ -807,7 +860,8 @@ public class Models {
     }
 
 
-    /** Note: should col.genCards() afterwards. 
+    /** Note: should col.genCards() afterwards.
+     * 增加新的卡片模板
      * @throws ConfirmModSchemaException */
     public void addTemplate(JSONObject m, JSONObject template) throws ConfirmModSchemaException {
         try {
@@ -817,6 +871,7 @@ public class Models {
             JSONArray ja = m.getJSONArray("tmpls");
             ja.put(template);
             m.put("tmpls", ja);
+            // 跟新卡片模板的索引号
             _updateTemplOrds(m);
             save(m);
         } catch (JSONException e) {
@@ -827,14 +882,16 @@ public class Models {
 
     /**
      * Removing a template
-     *
-     * @return False if removing template would leave orphan notes.
+     * 删除一个卡片模板
+     * @return False if removing template would leave orphan notes.删除卡片模板将留下孤零零的笔记；
      * @throws ConfirmModSchemaException 
      */
     public boolean remTemplate(JSONObject m, JSONObject template) throws ConfirmModSchemaException {
         try {
+            // Todo_john 假定卡片模板的数量大于1，
             assert (m.getJSONArray("tmpls").length() > 1);
             // find cards using this template
+            // 找到传入的卡片模板，在笔记类型中的卡片模板中的索引号；
             JSONArray ja = m.getJSONArray("tmpls");
             int ord = -1;
             for (int i = 0; i < ja.length(); ++i) {
@@ -843,24 +900,34 @@ public class Models {
                     break;
                 }
             }
+            // 找出所有使用此卡片模板的卡片；
             String sql = "select c.id from cards c, notes f where c.nid=f.id and mid = " +
                     m.getLong("id") + " and ord = " + ord;
             long[] cids = Utils.toPrimitive(mCol.getDb().queryColumn(Long.class, sql, 0));
             // all notes with this template must have at least two cards, or we could end up creating orphaned notes
+            /**(select nid from cards where id in " +Utils.ids2str(cids) + ")意义在于，从这些卡片中再找到卡片使用到的nid，
+             * select nid, count() from cards where nid in(...)意在将寻找到的nid,合并，取出其使用次数；
+             * group by nid having count() < 2 limit 1 根据nid排序，筛选出count()小于2的，并且只要第一个记录；
+             */
             sql = "select nid, count() from cards where nid in (select nid from cards where id in " +
                     Utils.ids2str(cids) + ") group by nid having count() < 2 limit 1";
             if (mCol.getDb().queryScalar(sql) != 0) {
+                //如果按照这条查询语句查到了记录，说明，存在这样的笔记，即这个笔记只有一张卡片，并且这张卡片恰好是用的当前卡片模板；如果移除这个卡片模板，即是删除此卡片，笔记将变得孤零零；
                 return false;
             }
             // ok to proceed; remove cards
+            // 如果走到这一步，说明ok了，现在可以移除这个卡片模板
+            // 首先做个schema改变标记，用于强制同步；
             mCol.modSchema(true);
+            // 删除这些相关卡片
             mCol.remCards(cids);
-            // shift ordinals
+            // shift ordinals移动序号，对于卡片的卡片模板索引号ord大于传入的模板的索引号的卡片，需要跟新数据库信息；
             mCol.getDb()
                     .execute(
                             "update cards set ord = ord - 1, usn = ?, mod = ? where nid in (select id from notes where mid = ?) and ord > ?",
                             new Object[] { mCol.usn(), Utils.intNow(), m.getLong("id"), ord });
             JSONArray tmpls = m.getJSONArray("tmpls");
+            // 创建新的json数组ja2,用于承载新的卡片模板，
             JSONArray ja2 = new JSONArray();
             for (int i = 0; i < tmpls.length(); ++i) {
                 if (template.equals(tmpls.getJSONObject(i))) {
@@ -872,12 +939,13 @@ public class Models {
         } catch (JSONException e) {
             throw new RuntimeException(e);
         }
+        // 更新卡片模板索引号，
         _updateTemplOrds(m);
         save(m);
         return true;
     }
 
-
+    // 更新卡片模板的索引号；
     public void _updateTemplOrds(JSONObject m) {
         JSONArray ja;
         try {
@@ -891,12 +959,14 @@ public class Models {
         }
     }
 
-
+    // 移动卡片模板，即改变卡片模板的索引号，
     public void moveTemplate(JSONObject m, JSONObject template, int idx) {
         try {
             JSONArray ja = m.getJSONArray("tmpls");
             int oldidx = -1;
+            // 创建一个新的卡片模板json集合l;
             ArrayList<JSONObject> l = new ArrayList<JSONObject>();
+            // oldidxs存放旧的模板和其对应的索引号；
             HashMap<Integer, Integer> oldidxs = new HashMap<Integer, Integer>();
             for (int i = 0; i < ja.length(); ++i) {
                 if (ja.get(i).equals(template)) {
@@ -916,6 +986,10 @@ public class Models {
             // generate change map - We use StringBuilder
             StringBuilder sb = new StringBuilder();
             ja = m.getJSONArray("tmpls");
+            /**
+             * 拼接sb字符串，如果有五个卡片模板，我们现在要将第4个移动到1，怎，拼接的字符串就是：
+             *   when ord = 0 then 0 "" when ord = 3 then 1 "" when ord = 1 then 2"" when ord = 2 then 3"" when ord = 4 then 4
+             */
             for (int i = 0; i < ja.length(); ++i) {
                 JSONObject t = ja.getJSONObject(i);
                 sb.append("when ord = ").append(oldidxs.get(t.hashCode())).append(" then ").append(t.getInt("ord"));
@@ -925,16 +999,19 @@ public class Models {
             }
             // apply
             save(m);
+            // 更新cards表中的ord,以及相关字段；
+            // 使用sql语句的case when end 语法；
             mCol.getDb().execute("update cards set ord = (case " + sb.toString() +
-            		" end),usn=?,mod=? where nid in (select id from notes where mid = ?)",
-                    new Object[] { mCol.usn(), Utils.intNow(), m.getLong("id") });
+                            " end),usn=?,mod=? where nid in (select id from notes where mid = ?)",
+                    new Object[]{mCol.usn(), Utils.intNow(), m.getLong("id")});
         } catch (JSONException e) {
             throw new RuntimeException(e);
         }
     }
 
-
+    // 同步卡片模板；为用到这个笔记类型的笔记重新生成卡片
     private void _syncTemplates(JSONObject m) {
+        // nids(m) 即为，用到此笔记类型的所有笔记
         ArrayList<Long> rem = mCol.genCards(Utils.arrayList2array(nids(m)));
     }
 
@@ -944,17 +1021,18 @@ public class Models {
      */
 
     /**
-     * Change a model
-     * @param m The model to change.
-     * @param nids The list of notes that the change applies to.
-     * @param newModel For replacing the old model with another one. Should be self if the model is not changing
-     * @param fmap Map for switching fields. This is ord->ord and there should not be duplicate targets
-     * @param cmap Map for switching cards. This is ord->ord and there should not be duplicate targets
+     * Change a model改变一个笔记类型的模板
+     * @param m The model to change.要改变的那个笔记类型
+     * @param nids The list of notes that the change applies to. 要改变的笔记类型将会影响到的笔记
+     * @param newModel For replacing the old model with another one. Should be self if the model is not changing 新的笔记类型
+     * @param fmap Map for switching fields. This is ord->ord and there should not be duplicate targets 字段的集合，用于字段的切换
+     * @param cmap Map for switching cards. This is ord->ord and there should not be duplicate targets  卡片的集合，用于切换卡片；
      * @throws ConfirmModSchemaException 
      */
     public void change(JSONObject m, long[] nids, JSONObject newModel, Map<Integer, Integer> fmap, Map<Integer, Integer> cmap) throws ConfirmModSchemaException {
         mCol.modSchema(true);
         try {
+            // 假定新的笔记类型的id，等于原来的笔记类型的id，或者
             assert (newModel.getLong("id") == m.getLong("id")) || (fmap != null && cmap != null);
         } catch (JSONException e) {
             throw new RuntimeException(e);
@@ -968,18 +1046,27 @@ public class Models {
         mCol.genCards(nids);
     }
 
+    /**
+     *  改变笔记，_changeNotes(nids, newModel, fmap);
+     * @param nids 新的卡片模板将会影响到的笔记；
+     * @param newModel 新的卡片模板
+     * @param map 字段的切换，指，笔记类型中的字段调换了索引位置，而产生的集合字典；
+     */
     private void _changeNotes(long[] nids, JSONObject newModel, Map<Integer, Integer> map) {
         List<Object[]> d = new ArrayList<Object[]>();
         int nfields;
         long mid;
         try {
+            // nfields 指新的卡片类型包含的字段的个数
             nfields = newModel.getJSONArray("flds").length();
+            // mid 新的卡片类型的id
             mid = newModel.getLong("id");
         } catch (JSONException e) {
             throw new RuntimeException(e);
         }
         Cursor cur = null;
         try {
+            // concat是链接字符串的一个方法，此代码意为在notes表中查询到形参中涉及的笔记id的记录，
             cur = mCol.getDb().getDatabase().rawQuery(
                     "select id, flds from notes where id in ".concat(Utils.ids2str(nids)), null);
             while (cur.moveToNext()) {
@@ -987,9 +1074,11 @@ public class Models {
                 String[] flds = Utils.splitFields(cur.getString(1));
                 Map<Integer, String> newflds = new HashMap<Integer, String>();
 
+                // 根据map调换字段的索引位置，
                 for (Integer old : map.keySet()) {
                     newflds.put(map.get(old), flds[old]);
                 }
+                // 调整完位置后，重新排队，生成新的字段集合
                 List<String> flds2 = new ArrayList<String>();
                 for (int c = 0; c < nfields; ++c) {
                     if (newflds.containsKey(c)) {
@@ -998,6 +1087,7 @@ public class Models {
                         flds2.add("");
                     }
                 }
+                // 将新的字段集合变成字符串，并更新写入笔记的表中，
                 String joinedFlds = Utils.joinFields(flds2.toArray(new String[flds2.size()]));
                 d.add(new Object[] { joinedFlds, mid, Utils.intNow(), mCol.usn(), nid });
             }
@@ -1007,9 +1097,17 @@ public class Models {
             }
         }
         mCol.getDb().executeMany("update notes set flds=?,mid=?,mod=?,usn=? where id = ?", d);
+        // updateFieldCache方法的作用: 更新数据库笔记表中的内容，特别是更新排序字段，和csum字段，此字段由flds第一个值得哈希值而来，可以避免笔记重复；
         mCol.updateFieldCache(nids);
     }
 
+    /**
+     *
+     * @param nids
+     * @param oldModel
+     * @param newModel
+     * @param map
+     */
     private void _changeCards(long[] nids, JSONObject oldModel, JSONObject newModel, Map<Integer, Integer> map) {
         List<Object[]> d = new ArrayList<Object[]>();
         List<Long> deleted = new ArrayList<Long>();
@@ -1065,7 +1163,9 @@ public class Models {
      * Schema hash ***********************************************************************************************
      */
 
-    /** Return a hash of the schema, to see if models are compatible. */
+    /** Return a hash of the schema, to see if models are compatible.
+     * 返回一个schema的哈希值，用来判断此笔记类型是否兼容；
+     * */
     public String scmhash(JSONObject m) {
         String s = "";
         try {
@@ -1089,6 +1189,7 @@ public class Models {
 
     /**
      * Required field/text cache
+     * 更新笔记类型中的req字段，它描述着每个卡片模板的question所需要的字段信息；
      * ***********************************************************************************************
      */
 
@@ -1111,11 +1212,13 @@ public class Models {
             JSONArray templates = m.getJSONArray("tmpls");
             for (int i = 0; i < templates.length(); i++) {
                 JSONObject t = templates.getJSONObject(i);
+                // 获取这个卡片模板的正面，即question所需要的字段
                 Object[] ret = _reqForTemplate(m, flds, t);
                 JSONArray r = new JSONArray();
                 r.put(t.getInt("ord"));
                 r.put(ret[0]);
                 r.put(ret[1]);
+                // 向笔记模型的 req字段添加每个卡片模板对应的内容；
                 req.put(r);
             }
             m.put("req", req);
@@ -1129,7 +1232,7 @@ public class Models {
      * @param m 是Model ,是笔记类型；
      * @param flds  是笔记类型中的字段名称的集合；
      * @param t 是笔记类型中的 卡片模板中的某一个；
-     * @return 这个卡片模板中需要的字段；new Object[] { "none", new JSONArray(), new JSONArray() };
+     * @return 这个卡片模板中需要的字段；比如：{“all”, [1]},或是{“any”,[0,1,3]}
      */
     private Object[] _reqForTemplate(JSONObject m, ArrayList<String> flds, JSONObject t) {
         try {
@@ -1157,10 +1260,11 @@ public class Models {
                     Utils.joinFields(b.toArray(new String[b.size()])) };
             String empty = mCol._renderQA(data).get("q");
             // if full and empty are the same, the template is invalid and there is no way to satisfy it
-            // 如果full 和 empty 是相同的，则卡片模板无效，没有办法去满足它
+            // 如果full 和 empty 是相同的，即，当前卡片模板中的问题没有用到任何字段，则卡片模板无效，没有办法去满足它
             if (full.equals(empty)) {
                 return new Object[] { "none", new JSONArray(), new JSONArray() };
             }
+            // 处理all类型的：
             String type = "all";
             JSONArray req = new JSONArray();
             ArrayList<String> tmp = new ArrayList<String>();
@@ -1172,6 +1276,7 @@ public class Models {
                 // if no field content appeared, field is required
                 if (!mCol._renderQA(data).get("q").contains("ankiflag")) {
                     //如果不包含ankiflag,说明，则其他字段都没有参与到question中，则，这个时候当前字段必须参与到question中；
+                    //即，all的情况下，只有一个字段参与到question中，
                     req.put(i);
                 }
             }
@@ -1188,6 +1293,7 @@ public class Models {
                 tmp.set(i, "1");
                 data[6] = Utils.joinFields(tmp.toArray(new String[tmp.size()]));
                 // if not the same as empty, this field can make the card non-blank
+                // 即，如果返回的question不为空，则说明，question中包含这个字段，
                 if (!mCol._renderQA(data).get("q").equals(empty)) {
                     req.put(i);
                 }
@@ -1199,7 +1305,9 @@ public class Models {
     }
 
 
-    /** Given a joined field string, return available template ordinals */
+    /** Given a joined field string, return available template ordinals
+     * 根据传入的笔记类型和字段值，来判断，那些卡片模板是可用的，并将其卡片模板的序列号封装进一个集合将其返回；
+     * */
     public ArrayList<Integer> availOrds(JSONObject m, String flds) {
         try {
             if (m.getInt("type") == Consts.MODEL_CLOZE) {

@@ -235,6 +235,7 @@ public class Utils {
 
     /**
      * Strips a text from <style>...</style>, <script>...</script> and <_any_tag_> HTML tags.
+     * 剥掉html标签，只留下输入字符串纯文本信息
      * @param s The HTML text to be cleaned.
      * @return The text without the aforementioned tags.
      */
@@ -404,7 +405,10 @@ public class Utils {
     }
 
 
-    /** Return the first safe ID to use. */
+    /** Return the first safe ID to use.
+     * 返回卡片表中id那一列中最大的值；这个最大的值还要与now比较，比较出的最大值还要+1；
+     * 即返回一个安全的id ,这个id ,是唯一的，不会被重复的；
+     * */
     public static long maxID(AnkiDb db) {
         long now = intNow(1000);
         now = Math.max(now, db.queryLongScalar("SELECT MAX(id) FROM cards"));
