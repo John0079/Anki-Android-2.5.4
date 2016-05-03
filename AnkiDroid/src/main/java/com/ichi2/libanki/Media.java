@@ -132,7 +132,7 @@ public class Media {
         connect();
     }
 
-
+    // 链接数据库
     public void connect() {
         if (mCol.getServer()) {
             return;
@@ -144,6 +144,7 @@ public class Media {
         boolean create = !(dbFile.exists());
         mDb = AnkiDatabaseManager.getDatabase(path);
         if (create) {
+            //初始化media数据库；
             _initDB();
         }
         maybeUpgrade();
@@ -162,8 +163,9 @@ public class Media {
         mDb.executeScript(sql);
     }
 
-
+    // 可以升级吗？
     public void maybeUpgrade() {
+        // 返回 collection.media.db
         String oldpath = dir() + ".db";
         File oldDbFile = new File(oldpath);
         if (oldDbFile.exists()) {

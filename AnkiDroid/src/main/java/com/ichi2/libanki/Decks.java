@@ -858,6 +858,7 @@ public class Decks {
 
     /**
      * The currently active dids. Make sure to copy before modifying.
+     * 返回当前活动者的牌组，将这些牌组id，放入一个集合返回
      */
     public LinkedList<Long> active() {
         try {
@@ -938,7 +939,8 @@ public class Decks {
 
 
     /**
-     * All parents of did.
+     * 如果did的名字是 aa::bb::cc::dd
+     * 则返回的是{aa, aa::bb, aa::bb::cc}这三个牌组对应的具体描述数据；
      */
     public List<JSONObject> parents(long did) {
         // get parent and grandparent names
@@ -953,6 +955,8 @@ public class Decks {
                 }
             }
             // convert to objects
+            // 如果did的名字是 aa::bb::cc::dd
+            // 则这时候parents 就是{aa, aa::bb, aa::bb::cc}
             List<JSONObject> oParents = new ArrayList<>();
             for (int i = 0; i < parents.size(); i++) {
                 oParents.add(i, get(id(parents.get(i))));

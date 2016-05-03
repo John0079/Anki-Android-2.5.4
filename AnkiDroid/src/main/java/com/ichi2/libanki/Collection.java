@@ -65,6 +65,7 @@ public class Collection {
 
     private AnkiDb mDb;
     private boolean mServer;
+    // 上一次保存时间
     private double mLastSave;
     private Media mMedia;
     private Decks mDecks;
@@ -80,8 +81,10 @@ public class Collection {
     private long mCrt;
     private long mMod;
     private long mScm;
+    // dirty whether full sync was require?
     private boolean mDty;
     private int mUsn;
+    // Todo_john ls last sync 最后一次同步
     private long mLs;
     private JSONObject mConf;
     // END: SQL table columns
@@ -96,7 +99,7 @@ public class Collection {
     private static final Pattern fClozePatternA = Pattern.compile("\\{\\{(.*?)cloze:");
     private static final Pattern fClozeTagStart = Pattern.compile("<%cloze:");
 
-    // other options
+    // other options 配置信息，它对应着col表中的conf字段；
     public static final String defaultConf = "{"
             +
             // review options
@@ -248,7 +251,11 @@ public class Collection {
         save(null, mod);
     }
 
-
+    /**
+     * 写入数据库，这个方法要加上同步锁
+     * @param name
+     * @param mod
+     */
     public synchronized void save(String name, long mod) {
         // let the managers conditionally flush
         mModels.flush();
@@ -256,9 +263,11 @@ public class Collection {
         mTags.flush();
         // and flush deck + bump mod if db has been changed
         if (mDb.getMod()) {
+            // 如果mDb修改过
             flush(mod);
             mDb.commit();
             lock();
+            // 设置修改；
             mDb.setMod(false);
         }
         // undoing non review operation is handled differently in ankidroid
@@ -267,7 +276,9 @@ public class Collection {
     }
 
 
-    /** Save if 5 minutes has passed since last save. */
+    /** Save if 5 minutes has passed since last save.
+     * 每隔五分钟自动保存一次
+     * */
     public void autosave() {
         if ((Utils.now() - mLastSave) > 300) {
             save();
@@ -275,11 +286,15 @@ public class Collection {
     }
 
 
-    /** make sure we don't accidentally bump mod time */
+    /** make sure we don't accidentally bump mod time
+     * 锁上，确保我们不能偶然触及磕碰到修改时间；
+     * */
     public void lock() {
         // make sure we don't accidentally bump mod time
-        boolean mod = mDb.getMod();
+        boolean mod = mDb.getMod(); //数据库现在正在修改吗？
+        //Todo_john 这句话什么意思啊！UPDATE col SET mod=mod
         mDb.execute("UPDATE col SET mod=mod");
+        // 设置col表中的
         mDb.setMod(mod);
     }
 
@@ -292,11 +307,18 @@ public class Collection {
     }
 
 
+    /**
+     * 断开与数据库的链接
+     * @param save
+     */
     public synchronized void close(boolean save) {
         if (mDb != null) {
+            // 取出“newBury”的值，如果没有这个字段，则返回false
             if (!mConf.optBoolean("newBury", false)) {
                 boolean mod = mDb.getMod();
+                // 取消被搁置的卡片；
                 mSched.unburyCards();
+                // Todo_john mod为什么取出来有设置上呢？啥意思？
                 mDb.setMod(mod);
             }
             try {
@@ -326,7 +348,7 @@ public class Collection {
         }
     }
 
-
+    // 重新打开数据库
     public void reopen() {
         if (mDb == null) {
             mDb = AnkiDatabaseManager.getDatabase(mPath);
@@ -385,7 +407,9 @@ public class Collection {
     }
 
 
-    /** True if schema changed since last sync. */
+    /** True if schema changed since last sync.
+     * 返回schema是否改变过，
+     * */
     public boolean schemaChanged() {
         return mScm > mLs;
     }
@@ -400,23 +424,27 @@ public class Collection {
     }
 
 
-    /** called before a full upload */
+    /** called before a full upload
+     * 全部上传之前要做事情；
+     * */
     public void beforeUpload() {
         String[] tables = new String[] { "notes", "cards", "revlog" };
+        // 首先把这三个表的统一序列号修改成1;
         for (String t : tables) {
             mDb.execute("UPDATE " + t + " SET usn=0 WHERE usn=-1");
         }
-        // we can save space by removing the log of deletions
+        // we can save space by removing the log of deletions,为了节省空间，我们可以移除那些删除的log记录
+        // Todo_john 这个graves就是用来记录删除的东西的吗？
         mDb.execute("delete from graves");
-        mUsn += 1;
-        mModels.beforeUpload();
-        mTags.beforeUpload();
-        mDecks.beforeUpload();
-        modSchemaNoCheck();
+        mUsn += 1;  //统一序列化号递增加一；
+        mModels.beforeUpload();   // 把所有笔记类型的usn设置为0；
+        mTags.beforeUpload();   // 把tags的所有key都设置为0；
+        mDecks.beforeUpload();  // 把所有deck的usn都设置为0，把所有deck对应的conf中的usn也都设置为0
+        modSchemaNoCheck();    // 修改 mScm = Utils.intNow(1000); 修改setMod(true);
         mLs = mScm;
-        // ensure db is compacted before upload
-        mDb.execute("vacuum");
-        mDb.execute("analyze");
+        // ensure db is compacted before upload 确保数据库是压实的，
+        mDb.execute("vacuum"); //  VACUUM命令复制主数据库文件到临时数据库并从临时数据库重新载入主数据库
+        mDb.execute("analyze"); // ANALYZE命令令集合关于索引的统计信息并将它们储存在数据库的一个特殊表中，查询优化器可以用该表来制作更好的索引选择。若不给出参数，所有附加数据库中的所有索引被分析
         close();
     }
 
@@ -426,11 +454,12 @@ public class Collection {
      * *********************************************
      */
 
+    // 给个卡片的id，获取所对应的卡片
     public Card getCard(long id) {
         return new Card(this, id);
     }
 
-
+    // 给出笔记的id,获取所对应的笔记
     public Note getNote(long id) {
         return new Note(this, id);
     }
@@ -438,6 +467,7 @@ public class Collection {
 
     /**
      * Utils ******************************************************************** ***************************
+     * 获取conf里面nextXxx的属性值，比如nextPos的属性值，然后对此属性值累加1；
      * 在这里用到这个方法： data.add(new Object[] { ts, nid, did, tord, now, usn, nextID("pos") });
      * 就此代码，分析；
      */
@@ -464,6 +494,7 @@ public class Collection {
 
     /**
      * Rebuild the queue and reload data after DB modified.
+     * 数据库修改后从新建立队列和加载数据；
      */
     public void reset() {
         mSched.reset();
@@ -472,6 +503,7 @@ public class Collection {
 
     /**
      * Deletion logging ********************************************************* **************************************
+     * 登记记录删除的卡片，
      */
 
     public void _logRem(long[] ids, int type) {
@@ -488,20 +520,21 @@ public class Collection {
     /**
      * Notes ******************************************************************** ***************************
      */
-
+    // 返回所有的笔记条数总和；
     public int noteCount() {
         return (int) mDb.queryScalar("SELECT count() FROM notes");
     }
 
     /**
      * Return a new note with the default model from the deck
+     * 返回以个新的笔记，按照默认的笔记类型；
      * @return The new note
      */
     public Note newNote() {
         return newNote(true);
     }
 
-    /**
+    /**使用当前的笔记模型创建一条新的笔记返回；
      * Return a new note with the model derived from the deck or the configuration
      * @param forDeck When true it uses the model specified in the deck (mid), otherwise it uses the model specified in
      *                the configuration (curModel)
@@ -512,7 +545,7 @@ public class Collection {
     }
 
     /**
-     * Return a new note with a specific model
+     * Return a new note with a specific model 使用指定的笔记类型创造出一个新的笔记返回，
      * @param m The model to use for the new note
      * @return The new note
      */
@@ -523,6 +556,7 @@ public class Collection {
 
     /**
      * Add a note to the collection. Return number of new cards.
+     * 添加一个笔记到牌组集合，返回由此笔记产生的卡片的数量
      */
     public int addNote(Note note) {
         // check we have card models available, then save
@@ -532,6 +566,7 @@ public class Collection {
         }
         note.flush();
         // deck conf governs which of these are used
+        // Todo_john 获取nextPos的值是1， 获取它有什么意义呢????
         int due = nextID("pos");
         // add cards
         int ncards = 0;
@@ -749,10 +784,11 @@ public class Collection {
 
 	/**
 	 * Return cards of a note, without saving them
+     * 返回一个笔记的卡片，但是不保存他们，只是用来预览；
 	 * @param note The note whose cards are going to be previewed
-     * @param type 0 - when previewing in add dialog, only non-empty
-     *             1 - when previewing edit, only existing
-     *             2 - when previewing in models dialog, all templates
+     * @param type 0 - when previewing in add dialog, only non-empty 来自添加对话框的预览
+     *             1 - when previewing edit, only existing 来自编辑状态的预览
+     *             2 - when previewing in models dialog, all templates 来自笔记类型对话框的预览；
      * @return list of cards
 	 */
 	public List<Card> previewCards(Note note, int type) {
@@ -788,14 +824,25 @@ public class Collection {
         return previewCards(note, 0);
     }
 
+
     /**
-     * Create a new card.
+     * 创建一个新的卡片返回，
+     * @param note
+     * @param template
+     * @param due 它来自于conf里的nextPos属性的值；
+     * @return
      */
     private Card _newCard(Note note, JSONObject template, int due) {
         return _newCard(note, template, due, true);
     }
 
-
+    /**
+     * 创建一个新的卡片返回，
+     * @param note
+     * @param template
+     * @param due 它来自于conf里的nextPos属性的值；
+     * @return
+     */
     private Card _newCard(Note note, JSONObject template, int due, boolean flush) {
         Card card = new Card(this);
         card.setNid(note.getId());
@@ -830,17 +877,21 @@ public class Collection {
         return card;
     }
 
-
+    // 为这个牌组的新卡设置due的时间；这里的due来自于col中的conf字段的nextPos属性值，一般是1；
+    // 返回一个1到1000的随机数；
     public int _dueForDid(long did, int due) {
+        // 每个牌组都有一个他学习的配置文件，但是通常我们都没有配置此文件，因此所有牌组都通用一个学习的配置文件；
         JSONObject conf = mDecks.confForDid(did);
         // in order due?
         try {
             if (conf.getJSONObject("new").getInt("order") == Consts.NEW_CARDS_DUE) {
+                // 如果是按照创建卡片的顺序则，直接返回due即可；
                 return due;
             } else {
                 // random mode; seed with note ts so all cards of this note get
                 // the same random number
                 Random r = new Random();
+                // setSeed设置种子，设置完种子后，返回的随机数就是0到种子due之间的数字；
                 r.setSeed(due);
                 return r.nextInt(Math.max(due, 1000) - 1) + 1;
             }
@@ -855,10 +906,11 @@ public class Collection {
      */
 
     public boolean isEmpty() {
+        // SELECT 1 FROM cards用来查询表中是否有记录；
         return mDb.queryScalar("SELECT 1 FROM cards LIMIT 1") == 0;
     }
 
-
+    // 返回cards表中卡片的总数量；
     public int cardCount() {
         return mDb.queryScalar("SELECT count() FROM cards");
     }
@@ -899,16 +951,19 @@ public class Collection {
         _remNotes(nids);
     }
 
-
+    // 倾入，倒入，完全加载卡片；
     public List<Long> emptyCids() {
         List<Long> rem = new ArrayList<>();
         for (JSONObject m : getModels().all()) {
+            // nids(m)返回所有用到此笔记类型的笔记；
+            // 所有的笔记都依次生成卡片并加入rem集合中，返回；
             rem.addAll(genCards(getModels().nids(m)));
         }
         return rem;
     }
 
-
+    // 加载所有卡片的报告；
+    // Todo_john 这个方法不很理解，用途是什么呢？
     public String emptyCardReport(List<Long> cids) {
         StringBuilder rep = new StringBuilder();
         Cursor cur = null;
@@ -984,7 +1039,7 @@ public class Collection {
         return renderQA(null, "card");
     }
 
-
+    // 渲染问题和答案；
     public ArrayList<HashMap<String, String>> renderQA(int[] ids, String type) {
         String where;
         if (type.equals("card")) {
@@ -1015,7 +1070,10 @@ public class Collection {
     }
 
     /**
-     * 返回
+     * 返回// 最终d中保存三个元素，它是个字典：具体内容：
+     * "q"->"今天星期几啊"
+     * "a"->"今天星期几呀\n\n<hr id=answer>\n\n星期三吧"
+     * "id"->"41276839263"
      * @param data is [cid, nid, mid, did, ord, tags, flds] 注意，这里的ord是笔记类型中的卡片模板的索引号，
      * @param qfmt 格式化的问题字符串
      * @param afmt 格式化的答案字符串；
@@ -1121,7 +1179,7 @@ public class Collection {
         return _qaData("");
     }
 
-
+    // 返回一个集合，集合中每个元素的内容为：cid, nid, mid, did, ord-template, tags, flds,
     public ArrayList<Object[]> _qaData(String where) {
         ArrayList<Object[]> data = new ArrayList<Object[]>();
         Cursor cur = null;
@@ -1130,6 +1188,7 @@ public class Collection {
                     "SELECT c.id, n.id, n.mid, c.did, c.ord, "
                             + "n.tags, n.flds FROM cards c, notes n WHERE c.nid == n.id " + where, null);
             while (cur.moveToNext()) {
+                // data的内容即为： cid, nid, mid, did, ord-template, tags, flds,
                 data.add(new Object[] { cur.getLong(0), cur.getLong(1), cur.getLong(2), cur.getLong(3), cur.getInt(4),
                         cur.getString(5), cur.getString(6) });
             }
@@ -1146,13 +1205,15 @@ public class Collection {
      * Finding cards ************************************************************ ***********************************
      */
 
-    /** Return a list of card ids */
+    /** Return a list of card ids
+     * 搜索，返回含有search字符串的卡片集合；
+     * */
     public List<Long> findCards(String search) {
         return new Finder(this).findCards(search, null);
     }
 
 
-    /** Return a list of card ids */
+    /** Return a list of card ids 搜索，返回含有search字符串的卡片集合；*/
     public List<Long> findCards(String search, String order) {
         return new Finder(this).findCards(search, order);
     }
@@ -1232,6 +1293,7 @@ public class Collection {
 
     public void startTimebox() {
         mStartTime = Utils.now();
+        // Todo_john 这里的getReps()什么作用呢？
         mStartReps = mSched.getReps();
     }
 
@@ -1245,6 +1307,7 @@ public class Collection {
             }
             double elapsed = Utils.now() - mStartTime;
             if (elapsed > mConf.getLong("timeLim")) {
+                // Todo_john 这里的getReps()什么作用呢？
                 return new Long[] { mConf.getLong("timeLim"), (long) (mSched.getReps() - mStartReps) };
             }
         } catch (JSONException e) {
@@ -1266,7 +1329,9 @@ public class Collection {
     }
 
 
-    /** Undo menu item name, or "" if undo unavailable. */
+    /** Undo menu item name, or "" if undo unavailable.
+     * 返回undo名字，如果undo不可用，则这个名字为空“”，有了undo的名字，就系统就知道要撤销那个窗口的动作，
+     * */
     public String undoName(Resources res) {
         if (mUndo.size() > 0) {
             int undoType = (Integer) mUndo.getLast()[0];
@@ -1282,13 +1347,15 @@ public class Collection {
         return mUndo.size() > 0;
     }
 
-
+    // 执行撤销操作，
     public long undo() {
+        // 获取要撤销的操作数据；
     	Object[] data = mUndo.removeLast();
     	switch ((Integer)data[0]) {
-    	case UNDO_REVIEW:
+    	case UNDO_REVIEW: // 撤销上一次的复习卡片操作，
+            // 获取上一次的卡片，
             Card c = (Card) data[1];
-            // remove leech tag if it didn't have it before
+            // remove leech tag if it didn't have it before 删除它的水蛭标签
             Boolean wasLeech = (Boolean) data[2];
             if (!wasLeech && c.note().hasTag("leech")) {
                 c.note().delTag("leech");
@@ -1296,37 +1363,39 @@ public class Collection {
             }
             // write old data
             c.flush(false);
-            // and delete revlog entry
+            // and delete revlog entry 删除log记录
             long last = mDb.queryLongScalar("SELECT id FROM revlog WHERE cid = " + c.getId() + " ORDER BY id DESC LIMIT 1");
             mDb.execute("DELETE FROM revlog WHERE id = " + last);
-            // restore any siblings
+            // restore any siblings 恢复任何一个兄弟姐妹，它的兄弟姐妹卡片被搁置的，现在都取消搁置，
             mDb.execute("update cards set queue=type,mod=?,usn=? where queue=-2 and nid=?",
                     new Object[]{ Utils.intNow(), usn(), c.getNid() });
-            // and finally, update daily count
+            // and finally, update daily count 当前的卡片的队列是3吗？，如果不是就赋值为1，变成learning队列；
             int n = c.getQueue() == 3 ? 1 : c.getQueue();
             String type = (new String[] { "new", "lrn", "rev" })[n];
+            // 把整张卡所在的牌组，以及这个牌组的所有父牌组的xxxxToday的第二个元素的值都累加1；
             mSched._updateStats(c, type, -1);
+            // Todo_john 这里不是很懂啊，
             mSched.setReps(mSched.getReps() - 1);
             return c.getId();
 
-    	case UNDO_BURY_NOTE:
+    	case UNDO_BURY_NOTE: // 撤销上一次的搁置笔记操作
     		for (Card cc : (ArrayList<Card>)data[2]) {
     			cc.flush(false);
     		}
     		return (Long) data[3];
 
-    	case UNDO_SUSPEND_CARD:
+    	case UNDO_SUSPEND_CARD: // 撤销上一次暂停卡片操作
     		Card suspendedCard = (Card)data[1];
     		suspendedCard.flush(false);
     		return suspendedCard.getId();
 
-    	case UNDO_SUSPEND_NOTE:
+    	case UNDO_SUSPEND_NOTE: // 撤销上一次的暂停笔记操作
     		for (Card ccc : (ArrayList<Card>) data[1]) {
     			ccc.flush(false);
     		}
     		return (Long) data[2];
 
-    	case UNDO_DELETE_NOTE:
+    	case UNDO_DELETE_NOTE: // 撤销上一次的删除笔记操作
     		ArrayList<Long> ids = new ArrayList<Long>();
     		Note note2 = (Note)data[1];
     		note2.flush(note2.getMod(), false);
@@ -1338,7 +1407,7 @@ public class Collection {
     		mDb.execute("DELETE FROM graves WHERE oid IN " + Utils.ids2str(Utils.arrayList2array(ids)));
     		return (Long) data[3];
 
-        case UNDO_BURY_CARD:
+        case UNDO_BURY_CARD: // 撤销上一次的搁置卡片操作
             for (Card cc : (ArrayList<Card>)data[2]) {
                 cc.flush(false);
             }
@@ -1348,7 +1417,7 @@ public class Collection {
     	}
     }
 
-
+    // 标记undo
     public void markUndo(int type, Object[] o) {
     	switch(type) {
     	case UNDO_REVIEW:
@@ -1375,7 +1444,7 @@ public class Collection {
     	}
     }
 
-
+    //todo_john 为什么是这样呢？标记怎么与undo有关系呢？
     public void markReview(Card card) {
         markUndo(UNDO_REVIEW, new Object[]{card, card.note().hasTag("leech")});
     }
@@ -1387,13 +1456,16 @@ public class Collection {
 
     /*
      * Basic integrity check for syncing. True if ok.
+     * 基本的完整检查，为同步；
      */
     public boolean basicCheck() {
-        // cards without notes
+        // cards without notes 是否存在那种没有笔记记录的卡片；
         if (mDb.queryScalar("select 1 from cards where nid not in (select id from notes) limit 1") > 0) {
             return false;
         }
+        // 检查一下有没有坏笔记，即所有卡片中都没有用到做的笔记；
         boolean badNotes = mDb.queryScalar(String.format(Locale.US,
+                // select distinct nid from cards作用是过滤掉结果集中的重复值，
                 "select 1 from notes where id not in (select distinct nid from cards) " +
                 "or mid not in %s limit 1", Utils.ids2str(mModels.ids()))) > 0;
         // notes without cards or models
@@ -1403,7 +1475,7 @@ public class Collection {
         try {
             // invalid ords
             for (JSONObject m : mModels.all()) {
-                // ignore clozes
+                // ignore clozes 忽略填空题类型的笔记类型；
                 if (m.getInt("type") != Consts.MODEL_STD) {
                     continue;
                 }
@@ -1414,6 +1486,7 @@ public class Collection {
                     ords[t] = tmpls.getJSONObject(t).getInt("ord");
                 }
 
+                // 检验当前的ords中包含的卡片模板是否都被用过，
                 boolean badOrd = mDb.queryScalar(String.format(Locale.US,
                         "select 1 from cards where ord not in %s and nid in ( " +
                         "select id from notes where mid = %d) limit 1",
@@ -1429,19 +1502,24 @@ public class Collection {
     }
 
 
-    /** Fix possible problems and rebuild caches. */
+    /** Fix possible problems and rebuild caches.
+     * 修复可能出现的问题，重新创建缓存
+     * */
     public long fixIntegrity() {
+        // mPath就是~/AnkiDroid/collection.anki2
         File file = new File(mPath);
         ArrayList<String> problems = new ArrayList<String>();
         long oldSize = file.length();
         try {
             mDb.getDatabase().beginTransaction();
             try {
-                save();
+                save(); //在此提交数据库；
+                // PRAGMA integrity_check 该命令对整个数据库进行完整性检查
                 if (!mDb.queryString("PRAGMA integrity_check").equals("ok")) {
                     return -1;
                 }
                 // note types with a missing model
+                // 检查是否有那种笔记，即，只有笔记，而没有笔记类型的笔记；
                 ArrayList<Long> ids = mDb.queryColumn(Long.class,
                         "SELECT id FROM notes WHERE mid NOT IN " + Utils.ids2str(mModels.ids()), 0);
                 if (ids.size() != 0) {
@@ -1493,14 +1571,14 @@ public class Collection {
                         }
                     }
                 }
-                // delete any notes with missing cards
+                // delete any notes with missing cards 删除那些没有卡片的笔记，
                 ids = mDb.queryColumn(Long.class,
                         "SELECT id FROM notes WHERE id NOT IN (SELECT DISTINCT nid FROM cards)", 0);
                 if (ids.size() != 0) {
                 	problems.add("Deleted " + ids.size() + " note(s) with missing no cards.");
 	                _remNotes(Utils.arrayList2array(ids));
                 }
-                // cards with missing notes
+                // cards with missing notes 删除那些没有笔记的卡片
                 ids = mDb.queryColumn(Long.class,
                         "SELECT id FROM cards WHERE nid NOT IN (SELECT id FROM notes)", 0);
                 if (ids.size() != 0) {

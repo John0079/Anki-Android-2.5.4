@@ -252,7 +252,7 @@ public class Sched {
 
 
     /*
-     * Unbury cards.
+     * Unbury cards.取消搁置卡片
      */
     public void unburyCards() {
         try {
@@ -261,12 +261,13 @@ public class Sched {
         } catch (JSONException e) {
             throw new RuntimeException(e);
         }
-
+        // 把那些被搁置的卡片的队列值修改，修改成与这个卡片的type一致；
         mCol.getDb().execute("update cards set queue=type where queue = -2");
     }
 
-
+    // 针对牌组集合中正在活动的牌组，取消搁置这些牌组中之前被搁置的卡片，
     public void unburyCardsForDeck() {
+        // sids 是当前正活动的所有牌组的id连成的字符串
         String sids = Utils.ids2str(mCol.getDecks().active());
         mCol.log(mCol.getDb().queryColumn(Long.class, "select id from cards where queue = -2 and did in " + sids, 0));
         mCol.getDb().execute("update cards set mod=?,usn=?,queue=type where queue = -2 and did in " + sids,
@@ -278,22 +279,33 @@ public class Sched {
      * Rev/lrn/time daily stats *************************************************
      * **********************************************
      */
-
+    // 更新统计
     private void _updateStats(Card card, String type) {
         _updateStats(card, type, 1);
     }
 
-
+    /**
+     * 把整张卡所在的牌组，以及这个牌组的所有父牌组的xxxxToday的第二个元素的值都累加1；
+     * @param card
+     * @param type 可能是new, time, lrn, rev
+     * @param cnt
+     */
     public void _updateStats(Card card, String type, long cnt) {
+        // 可能是newToday, timeToday, lrnToday, revToday
         String key = type + "Today";
         long did = card.getDid();
+        /** parents(did) 这个方法返回的是did的所有父牌组的具体描述；
+         * 如果did的名字是 aa::bb::cc::dd
+         * 则返回的是{aa, aa::bb, aa::bb::cc}这三个牌组对应的具体描述数据；
+         */
         List<JSONObject> list = mCol.getDecks().parents(did);
         list.add(mCol.getDecks().get(did));
         for (JSONObject g : list) {
             try {
                 JSONArray a = g.getJSONArray(key);
-                // add
+                // 假设a的值是{0：183， 1：0}
                 a.put(1, a.getLong(1) + cnt);
+                // 则现在a的值是：{0：183， 1：1}
             } catch (JSONException e) {
                 throw new RuntimeException(e);
             }

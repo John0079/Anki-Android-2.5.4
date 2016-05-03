@@ -82,17 +82,27 @@ public class Card implements Cloneable {
     private int mType;
     private int mQueue;
     private long mDue;
+    // Todo_john 还不是很明白；
     private int mIvl;
+    // Todo_john 还不是很明白；
     private int mFactor;
+    // 重复的次数；
     private int mReps;
+    // 失误的次数；
     private int mLapses;
+    // Todo_john 还不是很明白；
     private int mLeft;
+    // 原来的due
     private long mODue;
+    // 原来的did
     private long mODid;
+    // Todo_john 还不是很明白；
     private int mFlags;
+    // Todo_john 还不是很明白；
     private String mData;
     // END SQL table entries
 
+    // Todo_john 还不是很明白；
     private HashMap<String, String> mQA;
     private Note mNote;
 
@@ -100,6 +110,7 @@ public class Card implements Cloneable {
     private boolean mWasNew;
 
     // Used by Sched to record the original interval in the revlog after answering.
+    // 上次的interval是多少？
     private int mLastIvl;
 
 
@@ -110,6 +121,7 @@ public class Card implements Cloneable {
 
     public Card(Collection col, Long id) {
         mCol = col;
+        // NaN = 0.0 / 0.0;
         mTimerStarted = Double.NaN;
         mQA = null;
         mNote = null;
@@ -118,6 +130,7 @@ public class Card implements Cloneable {
             load();
         } else {
             // to flush, set nid, ord, and due
+            // Utils.timestampID(mCol.getDb(), "cards");从cards表中返回一个安全的id，不会重复；
             mId = Utils.timestampID(mCol.getDb(), "cards");
             mDid = 1;
             mType = 0;
@@ -170,11 +183,12 @@ public class Card implements Cloneable {
     }
 
 
-
+    // 更新当前的卡片写入数据库；
     public void flush() {
         flush(true);
     }
 
+    // 更新写入数据库；
     public void flush(boolean changeModUsn) {
         if (changeModUsn) {
             mMod = Utils.intNow();
@@ -280,13 +294,23 @@ public class Card implements Cloneable {
     }
 
 
+    /**
+     * 返回// 最终d中保存三个元素，它是个字典：具体内容：
+     * "q"->"今天星期几啊"
+     * "a"->"今天星期几呀\n\n<hr id=answer>\n\n星期三吧"
+     * "id"->"41276839263" */
     public HashMap<String, String> _getQA(boolean reload, boolean browser) {
+        // private HashMap<String, String> mQA; mQA 应该是反应问题和答案的
         if (mQA == null || reload) {
+            // 获得当前卡片用到的笔记
             Note f = note(reload);
+            // 获取当前卡片用到的笔记类型
             JSONObject m = model();
+            // 获取当前卡片用到的卡片模板
             JSONObject t = template();
             Object[] data;
             try {
+                // @param data is [cid, nid, mid, did, ord, tags, flds] 注意，这里的ord是笔记类型中的卡片模板的索引号，
                 data = new Object[] { mId, f.getId(), m.getLong("id"), mODid != 0l ? mODid : mDid, mOrd,
                         f.stringTags(), f.joinedFields() };
             } catch (JSONException e) {
@@ -302,6 +326,11 @@ public class Card implements Cloneable {
                     throw new RuntimeException(e);
                 }
             } else {
+                /**
+                 * 返回// 最终d中保存三个元素，它是个字典：具体内容：
+                 * "q"->"今天星期几啊"
+                 * "a"->"今天星期几呀\n\n<hr id=answer>\n\n星期三吧"
+                 * "id"->"41276839263" */
                 mQA = mCol._renderQA(data);
             }
         }
@@ -313,7 +342,7 @@ public class Card implements Cloneable {
         return note(false);
     }
 
-
+    // 获得note对象；
     public Note note(boolean reload) {
         if (mNote == null || reload) {
             mNote = mCol.getNote(mNid);
@@ -321,12 +350,12 @@ public class Card implements Cloneable {
         return mNote;
     }
 
-
+    // 获取当前卡片用到的笔记类型
     public JSONObject model() {
         return mCol.getModels().get(note().getMid());
     }
 
-
+    // 获取当前卡片用到的卡片模板
     public JSONObject template() {
         JSONObject m = model();
         try {
@@ -340,7 +369,7 @@ public class Card implements Cloneable {
         }
     }
 
-
+    // 设置开始时间戳；
     public void startTimer() {
         mTimerStarted = Utils.now();
     }
@@ -348,6 +377,7 @@ public class Card implements Cloneable {
 
     /**
      * Time limit for answering in milliseconds.
+     * 从当前卡片所在的牌组配置中获得回答问题的时间限制
      */
     public int timeLimit() {
         JSONObject conf = mCol.getDecks().confForDid(mODid == 0 ? mDid : mODid);
@@ -358,7 +388,7 @@ public class Card implements Cloneable {
         }
     }
 
-
+    // 是否显示计时器
     public boolean shouldShowTimer() {
         try {
             return mCol.getDecks().confForDid(mODid == 0 ? mDid : mODid).getInt("timer") != 0;
@@ -370,13 +400,14 @@ public class Card implements Cloneable {
 
     /*
      * Time taken to answer card, in integer MS.
+     * 此卡片这次学习花费的时间
      */
     public int timeTaken() {
         int total = (int) ((Utils.now() - mTimerStarted) * 1000);
         return Math.min(total, timeLimit());
     }
 
-
+    // 如果当前的卡片模板索引号不再笔记类型的可用模板索引号内，则说明该卡片是空的；
     public boolean isEmpty() {
         ArrayList<Integer> ords = mCol.getModels().availOrds(model(), Utils.joinFields(note().getFields()));
         return !ords.contains(mOrd);
@@ -389,7 +420,7 @@ public class Card implements Cloneable {
      * ***********************************************************
      */
 
-
+    // 获得问题；
     public String qSimple() {
         return _getQA(false).get("q");
     }
@@ -397,6 +428,7 @@ public class Card implements Cloneable {
 
     /*
      * Returns the answer with anything before the <hr id=answer> tag removed
+     * 只返回纯粹的答案，不要带问题
      */
     public String getPureAnswer() {
         String s = _getQA(false).get("a");
@@ -413,6 +445,7 @@ public class Card implements Cloneable {
      *
      * Use this method whenever a review session (activity) has been paused. Use the resumeTimer()
      * method when the session resumes to start counting review time again.
+     * 当学习过程中暂停了，比如打进一个电话，或是其他行为中断了当前的学习，这时候要把学习这张卡片所用的时间暂时保存，等下次返回回来复习的时候再恢复；
      */
     public void stopTimer() {
         mElapsedTime = Utils.now() - mTimerStarted;
@@ -426,11 +459,13 @@ public class Card implements Cloneable {
      * reviewing. This method is required to keep track of the actual amount of time spent in
      * the reviewer and *must* be called on resume before any calls to timeTaken() take place
      * or the result of timeTaken() will be wrong.
+     * 当恢复学习状态的时候，恢复上次的学习这张卡片消耗的时间，并开始计时，累加
      */
     public void resumeTimer() {
         mTimerStarted = Utils.now() - mElapsedTime;
     }
 
+    // 设置开始时间；
     public void setTimerStarted(double timeStarted){ mTimerStarted = timeStarted; }
 
     public long getId() {
@@ -609,7 +644,7 @@ public class Card implements Cloneable {
         mCol = col;
     }
 
-
+    // 要显示计时器吗？
     public boolean showTimer() {
         return mCol.getDecks().confForDid(mODid == 0 ? mDid : mODid).optInt("timer", 1) != 0;
     }

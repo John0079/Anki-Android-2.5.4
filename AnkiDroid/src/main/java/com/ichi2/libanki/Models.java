@@ -43,8 +43,11 @@ import java.util.regex.Pattern;
 
 public class Models {
     // 下面三个是用来匹配填空题类型的卡片的正则表达式；
+    // faa{{addcloze:fa?:dddd?:fr}}fdas---从中筛选出 {{addcloze:fa?:dddd?:fr}}
     private static final Pattern fClozePattern1 = Pattern.compile("\\{\\{[^}]*?cloze:(?:[^}]?:)*(.+?)\\}\\}");
+    // dfafd<%cloze:fafdafa%>afa---从中筛选出<%cloze:fafdafa%>
     private static final Pattern fClozePattern2 = Pattern.compile("<%cloze:(.+?)%>");
+    // faa{{c233::fasfafe}}fdas---从中筛选出{{c233::fasfafe}}
     private static final Pattern fClozeOrdPattern = Pattern.compile("\\{\\{c(\\d+)::.+?\\}\\}");
 
     // 这个是默认笔记类型；
@@ -1371,40 +1374,64 @@ public class Models {
         return _availClozeOrds(m, flds, true);
     }
 
-
+    /**
+     * 此方法的作用是 返回一个可用的填空题的序列号集合；
+     * @param m 笔记类型；
+     * @param flds 字段值的数组，存放实实在在的字段值，而不是字段名；
+     * @param allowEmpty 是否允许字段中部挖空内容，不挖空就不是填空题了，
+     * @return
+     */
     public ArrayList<Integer> _availClozeOrds(JSONObject m, String flds, boolean allowEmpty) {
+        // 获取字段数组
         String[] sflds = Utils.splitFields(flds);
+        /** "Mapping of field name -> (ord, field).
+         *  比如： 字段有“正面”和“背面”，正面是第一个字段，背面是第二个字段；
+         *  则返回的map集合的第一个元素就是下面的样式：
+         *  { “文字” {0， {name:“文字”， sticky:false, rtl:false, ord:0, font:"Arial", size:20}}}
+         *  { “额外的” {1， {name:“额外的”， sticky:false, rtl:false, ord:1, font:"Arial", size:20}}}
+         * */
         Map<String, Pair<Integer, JSONObject>> map = fieldMap(m);
         Set<Integer> ords = new HashSet<Integer>();
         List<String> matches = new ArrayList<String>();
         Matcher mm;
         try {
+            // m.getJSONArray("tmpls").getJSONObject(0).getString("qfmt")的结果是 “{{cloze:文字}}”
             mm = fClozePattern1.matcher(m.getJSONArray("tmpls").getJSONObject(0).getString("qfmt"));
             while (mm.find()) {
+                // faa{{cloze:文字}}fdas---则，group(1)的结果是 文字
                 matches.add(mm.group(1));
             }
             mm = fClozePattern2.matcher(m.getJSONArray("tmpls").getJSONObject(0).getString("qfmt"));
             while (mm.find()) {
+                // <%cloze:文字%>---筛选出 “文字”将其加入到集合matches中；
                 matches.add(mm.group(1));
             }
         } catch (JSONException e) {
             throw new RuntimeException(e);
         }
         for (String fname : matches) {
+            /**
+            *  则返回的map集合的第一个元素就是下面的样式：
+            *  { “文字” {0， {name:“文字”， sticky:false, rtl:false, ord:0, font:"Arial", size:20}}}
+            *  { “额外的” {1， {name:“额外的”， sticky:false, rtl:false, ord:1, font:"Arial", size:20}}}
+             *  */
             if (!map.containsKey(fname)) {
                 continue;
             }
             int ord = map.get(fname).first;
+            // sflds 是字段数组；例如：“中国的首都的{{c1::东边}}是天津市；”
             mm = fClozeOrdPattern.matcher(sflds[ord]);
             while (mm.find()) {
+                // {{c1::东边}}---则mm.group(1)结果是1
                 ords.add(Integer.parseInt(mm.group(1)) - 1);
             }
+            // 如果这个字段挖了三个空，则ords的内容就是{0， 1， 2}，以此类推；
         }
         if (ords.contains(-1)) {
             ords.remove(-1);
         }
         if (ords.isEmpty() && allowEmpty) {
-            // empty clozes use first ord
+            // 如果没有挖空，并且允许这样不挖空，则返回一个只有{0}的集合；
             return new ArrayList<Integer>(Arrays.asList(new Integer[] { 0 }));
         }
         return new ArrayList<Integer>(ords);
@@ -1413,10 +1440,12 @@ public class Models {
 
     /**
      * Sync handling ***********************************************************************************************
+     * 上传之前的处理，即同步前处理；
      */
 
     public void beforeUpload() {
         try {
+            // all() 获取当前牌组集合中的所有笔记类型；将usn，唯一序列号设置为0；
             for (JSONObject m : all()) {
                 m.put("usn", 0);
             }
@@ -1429,7 +1458,7 @@ public class Models {
 
     /**
      * Routines from Stdmodels.py
-     * *
+     * *添加基本笔记类型；
      * @throws ConfirmModSchemaException **********************************************************************************************
      */
 
@@ -1438,13 +1467,25 @@ public class Models {
     }
 
 
+    /**
+     * 添加一个新的基本笔记类型；名字叫做name
+     * @param col
+     * @param name
+     * @return
+     * @throws ConfirmModSchemaException
+     */
     public static JSONObject addBasicModel(Collection col, String name) throws ConfirmModSchemaException {
+        // 获取Models对象；
         Models mm = col.getModels();
+        // 创建一个新的笔记类型名字叫name;
         JSONObject m = mm.newModel(name);
+        // 创建一个新的字段名字叫Front
         JSONObject fm = mm.newField("Front");
+        // 添加这个新的字段；
         mm.addField(m, fm);
         fm = mm.newField("Back");
         mm.addField(m, fm);
+        // 添加一个新的卡片模板；
         JSONObject t = mm.newTemplate("Card 1");
         try {
             t.put("qfmt", "{{Front}}");
@@ -1457,7 +1498,9 @@ public class Models {
         return m;
     }
 
-    /* Forward & Reverse */
+    /** Forward & Reverse
+     * 添加反转功能；
+     * */
 
     public static JSONObject addForwardReverse(Collection col) throws ConfirmModSchemaException {
     	String name = "Basic (and reversed card)";
@@ -1476,7 +1519,9 @@ public class Models {
     }
 
 
-    /* Forward & Optional Reverse */
+    /** Forward & Optional Reverse
+     * 向前和可选反转；
+     * */
 
     public static JSONObject addForwardOptionalReverse(Collection col) throws ConfirmModSchemaException {
     	String name = "Basic (optional reversed card)";
@@ -1496,7 +1541,12 @@ public class Models {
         return m;
     }
 
-
+    /**
+     * 添加填空题类型的笔记类型；
+     * @param col
+     * @return
+     * @throws ConfirmModSchemaException
+     */
     public static JSONObject addClozeModel(Collection col) throws ConfirmModSchemaException {
         Models mm = col.getModels();
         JSONObject m = mm.newModel("Cloze");
@@ -1531,6 +1581,7 @@ public class Models {
     }
 
 
+    /*返回牌组集合中所有的笔记类型和每个笔记类型对应的卡片模型；*/
     public HashMap<Long, HashMap<Integer, String>> getTemplateNames() {
         HashMap<Long, HashMap<Integer, String>> result = new HashMap<Long, HashMap<Integer, String>>();
         for (JSONObject m : mModels.values()) {
@@ -1561,17 +1612,20 @@ public class Models {
 
     /**
      * @return the name
+     * 返回笔记类型的名字
      */
     public String getName() {
         return mName;
     }
 
-
+    // 放回所有的笔记类型；
     public HashMap<Long, JSONObject> getModels() {
         return mModels;
     }
 
-    /** Validate model entries. */
+    /** Validate model entries.
+     *  检查笔记类型的有效性；
+     * */
 	public boolean validateModel() {
 		Iterator<Entry<Long, JSONObject>> iterator = mModels.entrySet().iterator();
 		while (iterator.hasNext()) {
@@ -1582,7 +1636,9 @@ public class Models {
 		return true;
 	}
 
-	/** Check if there is a right bracket for every left bracket. */
+	/** Check if there is a right bracket for every left bracket.
+     * 检查是否每一个左括号都有一个右括号与其匹配
+     * */
 	private boolean validateBrackets(JSONObject value) {
 		String s = value.toString();
 		int count = 0;
