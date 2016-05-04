@@ -60,37 +60,54 @@ public class Sched {
     private static final int[] FACTOR_ADDITION_VALUES = { -150, 0, 150 };
 
     private String mName = "std";
+    // 有自定义学习吗？
     private boolean mHaveCustomStudy = true;
+    // todo_john 不理解，mSpreadRev
     private boolean mSpreadRev = true;
+    // todo_john 回答完这个问题后要不要搁置这个卡片的姊妹卡片？
     private boolean mBurySiblingsOnAnswer = true;
 
     private Collection mCol;
+    // 队列限制；
     private int mQueueLimit;
+    // 报告限制
     private int mReportLimit;
+    // 是重复次数吗？不确定，可能是重复次数；
     private int mReps;
+    // 有队列吗？
     private boolean mHaveQueues;
+    // 今天
     private int mToday;
+    // 今天的截至时间；单位是秒，它总是指向某一天的凌晨四点钟
     public long mDayCutoff;
 
+    //新的，学习中的，复习的 分别的总数量；
     private int mNewCount;
     private int mLrnCount;
     private int mRevCount;
 
+    //todo_john modulus 新卡的系数？不懂
     private int mNewCardModulus;
 
+    //todo_john 估计缓存？
     private double[] mEtaCache = new double[] { -1, -1, -1, -1 };
 
-    // Queues
+    // Queues队列
+    // 新卡队列
     private final LinkedList<Long> mNewQueue = new LinkedList<Long>();
+    // 学习卡队列，这个队列只包含当天学习的队列
     private final LinkedList<long[]> mLrnQueue = new LinkedList<long[]>();
+    // 学习队列，这个队列包含夸天学习的队列；
     private final LinkedList<Long> mLrnDayQueue = new LinkedList<Long>();
+    // 复习队列；
     private final LinkedList<Long> mRevQueue = new LinkedList<Long>();
 
+    //新的， 学习中的，复习的卡片，分别对应的牌组的集合；
     private LinkedList<Long> mNewDids;
     private LinkedList<Long> mLrnDids;
     private LinkedList<Long> mRevDids;
 
-    // Not in libanki
+    // Not in libanki todo_john 一个antivity的弱应用，用意为何呢?
     private WeakReference<Activity> mContextReference;
 
     /**
@@ -111,6 +128,7 @@ public class Sched {
 
     /**
      * Pop the next card from the queue. None if finished.
+     * 从队列中取出下一个卡片，
      */
     public Card getCard() {
         _checkDay();
@@ -130,44 +148,49 @@ public class Sched {
         return null;
     }
 
-
+    // 重新设置
     public void reset() {
         _updateCutoff();
-        _resetLrn();
-        _resetRev();
-        _resetNew();
+        _resetLrn();// 重新设置今天的卡片的数量，清空学习队列，设置学习牌组为当前活动牌组
+        _resetRev();// 重新设置今天的复习卡片的数量，清空复习队列，
+        _resetNew();// 设置新卡片系数，重新设置今天的新卡片的数量，清空新卡片的队列；
         mHaveQueues = true;
     }
 
-
+    // 回答卡片
     public void answerCard(Card card, int ease) {
         mCol.log();
-        mCol.markReview(card);
+        mCol.markReview(card); // 对当前卡片mark，即标记学习过的卡片，用来做取消操作，
         if (mBurySiblingsOnAnswer) {
-            _burySiblings(card);
+            _burySiblings(card); // 搁置这张卡片的姊妹卡片；
         }
-        card.setReps(card.getReps() + 1);
+        card.setReps(card.getReps() + 1); //当前的卡片重复次数累加1；
         // former is for logging new cards, latter also covers filt. decks
-        card.setWasNew((card.getType() == 0));
-        boolean wasNewQ = (card.getQueue() == 0);
+        card.setWasNew((card.getType() == 0)); //这张卡片是新卡吗?
+        boolean wasNewQ = (card.getQueue() == 0); //这张卡片是在新卡队列吗？
         if (wasNewQ) {
             // came from the new queue, move to learning
-            card.setQueue(1);
+            card.setQueue(1); // 将这张卡的队列变成学习队列；
             // if it was a new card, it's now a learning card
             if (card.getType() == 0) {
-                card.setType(1);
+                card.setType(1); // 如果是新卡，则将它变成学习中的卡
             }
-            // init reps to graduation
+            // init reps to graduation //_startingLeft(card)返回开始剩余次数，比如返回1002，总共还要学习2次，但今天只能在学习一次，
             card.setLeft(_startingLeft(card));
-            // dynamic?
+            // dynamic?如果是过滤的卡片，并且卡片类型是复习的卡片，这种卡片进入新卡队列怎么办呢？
             if (card.getODid() != 0 && card.getType() == 2) {
                 if (_resched(card)) {
+                    // 如果要重新安排学习计划
                     // reviews get their ivl boosted on first sight
+                    // // _dynIvlBoost(card) 为动态卡片返回一个ivl，为动态卡片
                     card.setIvl(_dynIvlBoost(card));
+                    // 设置odue
                     card.setODue(mToday + card.getIvl());
                 }
             }
-            _updateStats(card, "new");
+            // 如果是来自全新卡片，则card设置：queue, type, left;
+            // 如果来自失误卡片，则card设置： ivl, odue;
+            _updateStats(card, "new"); // 对当前卡所在的牌组的dconf的newToday中的第二个字段累加1；
         }
         if (card.getQueue() == 1 || card.getQueue() == 3) {
             _answerLrnCard(card, ease);
@@ -344,26 +367,30 @@ public class Sched {
         HashMap<Long, Integer> pcounts = new HashMap<Long, Integer>();
         // for each of the active decks
         try {
+            // 遍历所有活动的牌组
             for (long did : mCol.getDecks().active()) {
-                // get the individual deck's limit
+                // get the individual deck's limit 获取单个的牌组的dconf中的每日的复习数量的限制
                 int lim = (Integer)limFn.invoke(Sched.this, mCol.getDecks().get(did));
                 if (lim == 0) {
                     continue;
                 }
-                // check the parents
+                // check the parents 检查第一个活动的牌组的所有父牌组
                 List<JSONObject> parents = mCol.getDecks().parents(did);
+                // 遍历第一个活动牌组的所有父牌组，
                 for (JSONObject p : parents) {
                     // add if missing
                     long id = p.getLong("id");
                     if (!pcounts.containsKey(id)) {
+                        // pcounts的元素将是{id, count}即存放，每个父牌组的id,和这个父牌组今天按照dconf配置，还需要学习的复习卡片还有多少个，
                         pcounts.put(id, (Integer)limFn.invoke(Sched.this, p));
                     }
-                    // take minimum of child and parent
+                    // take minimum of child and parent 即，**********子牌组的复习的卡片的限制一定要小于父牌组的复习卡片的限制，
                     lim = Math.min(pcounts.get(id), lim);
                 }
-                // see how many cards we actually have
+                // see how many cards we actually have，看看当前的牌组中实际还要学习的复习卡片数量
                 int cnt = (Integer)cntFn.invoke(Sched.this, did, lim);
                 // if non-zero, decrement from parents counts
+                // todo_john 最终返回的只跟cnt有关系，为什么还要管什么pcount呢？
                 for (JSONObject p : parents) {
                     long id = p.getLong("id");
                     pcounts.put(id, pcounts.get(id) - cnt);
@@ -573,6 +600,7 @@ public class Sched {
 
     /**
      * New cards **************************************************************** *******************************
+     * 遍历所有的活动牌组，计算今天要学习的新卡片的总数量；
      */
 
     private void _resetNewCount() {
@@ -586,6 +614,7 @@ public class Sched {
 
 
     // Used as an argument for _walkingCount() in _resetNewCount() above
+    // 这个牌组今天实际上还有多少新卡片需要学习
     @SuppressWarnings("unused")
     private int _cntFnNew(long did, int lim) {
         return mCol.getDb().queryScalar(
@@ -594,10 +623,10 @@ public class Sched {
 
 
     private void _resetNew() {
-        _resetNewCount();
+        _resetNewCount(); //遍历所有的活动牌组，计算今天要学习的新卡片的总数量
         mNewDids = new LinkedList<Long>(mCol.getDecks().active());
-        mNewQueue.clear();
-        _updateNewCardRatio();
+        mNewQueue.clear(); // 清空新卡片队列
+        _updateNewCardRatio(); //更新新卡片系数；
     }
 
 
@@ -658,19 +687,24 @@ public class Sched {
         return null;
     }
 
-
+    // 计算新卡片系数，当新卡被混合进复习的卡片进行学习时候，将返回一个计算过的值；
+    // 当新卡没有混合到复习的卡片中的时候，新卡片系数为0;
     private void _updateNewCardRatio() {
         try {
+            // Consts.NEW_CARDS_DISTRIBUTE 指定新卡应该被分布在复习的卡片之间，和复习的卡片混合出现；
             if (mCol.getConf().getInt("newSpread") == Consts.NEW_CARDS_DISTRIBUTE) {
                 if (mNewCount != 0) {
+                    // 新卡片的系数=新卡片与复习卡片的综合除以新卡片的数量，
                     mNewCardModulus = (mNewCount + mRevCount) / mNewCount;
                     // if there are cards to review, ensure modulo >= 2
                     if (mRevCount != 0) {
+                        //如果复习的卡片数量不等于0，则要保证新卡片的系数大于等于2；
                         mNewCardModulus = Math.max(2, mNewCardModulus);
                     }
                     return;
                 }
             }
+            // 如果新卡片与复习的卡片不混排，则新卡系数等于0；
             mNewCardModulus = 0;
         } catch (JSONException e) {
             throw new RuntimeException(e);
@@ -749,7 +783,7 @@ public class Sched {
     }
 
 
-    /* Limit for deck without parent limits. */
+    /* Limit for deck without parent limits.今天还有几张新卡片需要学习 */
     public int _deckNewLimitSingle(JSONObject g) {
         try {
             if (g.getInt("dyn") != 0) {
@@ -768,25 +802,28 @@ public class Sched {
 
     /**
      * Learning queues *********************************************************** ************************************
+     * // 重新设置学习数量，mDayCutoff今天的截至时间，它总是只想某一天的凌晨四点整那个时刻；
      */
 
     private void _resetLrnCount() {
         // sub-day
         mLrnCount = mCol.getDb().queryScalar(
+                // _deckLimit()获得当前活动的牌组，以下sql语句将返回今天到期的，学习中的卡片，限制在1000张，然后根据left来累计他们总共要学习的卡片张次；
                 "SELECT sum(left / 1000) FROM (SELECT left FROM cards WHERE did IN " + _deckLimit()
                 + " AND queue = 1 AND due < " + mDayCutoff + " LIMIT " + mReportLimit + ")");
 
-        // day
+        // day 返回以天为单位的处于学习阶段的卡片，它在队列序号3中，
         mLrnCount += mCol.getDb().queryScalar(
                 "SELECT count() FROM cards WHERE did IN " + _deckLimit() + " AND queue = 3 AND due <= " + mToday
                         + " LIMIT " + mReportLimit);
     }
 
-
+    // 重新设置今天的学习队列
     private void _resetLrn() {
-        _resetLrnCount();
-        mLrnQueue.clear();
-        mLrnDayQueue.clear();
+        _resetLrnCount(); // 重新设置学习数量；
+        mLrnQueue.clear(); // 学习队列清空，
+        mLrnDayQueue.clear(); // 天学习队列清空
+        // 设置当前活动的牌组为学习的牌组
         mLrnDids = mCol.getDecks().active();
     }
 
@@ -912,17 +949,17 @@ public class Sched {
      * @param ease 1=no, 2=yes, 3=remove
      */
     private void _answerLrnCard(Card card, int ease) {
-        JSONObject conf = _lrnConf(card);
+        JSONObject conf = _lrnConf(card); // 返回学习状态的配置信息可能是new的也可能是lapse的；
         int type;
         if (card.getODid() != 0 && !card.getWasNew()) {
-            type = 3;
+            type = 3; // 这种情况，即为过滤的卡片，但要隔天才能显示出来的，
         } else if (card.getType() == 2) {
-            type = 2;
+            type = 2; // 普通复习的卡片
         } else {
-            type = 0;
+            type = 0; //新卡片
         }
         boolean leaving = false;
-        // lrnCount was decremented once when card was fetched
+        // lrnCount was decremented once when card was fetched 当卡片被抽出，学习的次数减少一次；
         int lastLeft = card.getLeft();
         // immediate graduate?
         if (ease == 3) {
@@ -1014,11 +1051,13 @@ public class Sched {
         }
     }
 
-
+    // 返回学习状态的配置信息
     private JSONObject _lrnConf(Card card) {
         if (card.getType() == 2) {
+            //返回当前卡片的牌组的dconf对失误的卡片的配置信息
             return _lapseConf(card);
         } else {
+            // 返回当前卡片所在的牌组的dconf中的对于新卡片的配置信息；
             return _newConf(card);
         }
     }
@@ -1053,30 +1092,36 @@ public class Sched {
         }
     }
 
-
+    //开始剩余次数，比如返回1002，总共还要学习2次，但今天只能在学习一次，
     private int _startingLeft(Card card) {
         try {
             JSONObject conf;
         	if (card.getType() == 2) {
+                // 返回失误状态的配置信息
         		conf = _lapseConf(card);
         	} else {
+                // 返回学习状态的配置信息
         		conf = _lrnConf(card);
         	}
-            int tot = conf.getJSONArray("delays").length();
-            int tod = _leftToday(conf.getJSONArray("delays"), tot);
-            return tot + tod * 1000;
+            int tot = conf.getJSONArray("delays").length(); //tot反应了延迟的步骤次数；
+            int tod = _leftToday(conf.getJSONArray("delays"), tot); // 截至到今天结束，剩余的能被完成的步骤数量；
+            return tot + tod * 1000; //tod=2002, 说明还有两次，今天能完成，1002说明还有两次的学习，今天只能在学一次了。
         } catch (JSONException e) {
             throw new RuntimeException(e);
         }
     }
 
 
-    /* the number of steps that can be completed by the day cutoff */
+    /* the number of steps that can be completed by the day cutoff
+    * 截至到今天结束，剩余的能被完成的步骤数量；
+    * */
     private int _leftToday(JSONArray delays, int left) {
         return _leftToday(delays, left, 0);
     }
 
-
+    /* the number of steps that can be completed by the day cutoff
+    * 截至到今天结束，剩余的能被完成的步骤数量；
+    * */
     private int _leftToday(JSONArray delays, int left, long now) {
         if (now == 0) {
             now = Utils.intNow();
@@ -1225,27 +1270,38 @@ public class Sched {
     }
 
 
+    /**
+     * 计算单个牌组 的复习卡片的数量的限制
+     * @param d 一个牌组的描述信息，
+     * @return 输入牌组的 今天还需要复习的卡片的数量；
+     */
     private int _deckRevLimitSingle(JSONObject d) {
         try {
             if (d.getInt("dyn") != 0) {
+                // 如果不是过滤牌组，则返回mPeportLimit
                 return mReportLimit;
             }
+            // 如果是普通牌组，获取这个牌组对应的配置信息： dconf
             JSONObject c = mCol.getDecks().confForDid(d.getLong("id"));
+            // 从牌组的配置信息中读出每天复习的上限a, 减去牌组中的revToday属性里记录的今天已经复习的卡片的数量，其差值与0比较取最大值，返回
             return Math.max(0, c.getJSONObject("rev").getInt("perDay") - d.getJSONArray("revToday").getInt(1));
         } catch (JSONException e) {
             throw new RuntimeException(e);
         }
     }
 
-
+    //在限制范围内，当天要学习的复习卡片的实际数量；
     public int _revForDeck(long did, int lim) {
     	lim = Math.min(lim, mReportLimit);
     	return mCol.getDb().queryScalar("SELECT count() FROM (SELECT 1 FROM cards WHERE did = " + did + " AND queue = 2 AND due <= " + mToday + " LIMIT " + lim + ")");
     }
 
-
+    // 重新设置今天需要复习的卡片数量
     private void _resetRevCount() {
         try {
+            //_deckRevLimitSingle方法返回，按照dconf配置每天复习上限，减去今天已经复习的卡片数量，返回今天还需要学习的卡片数量
+            //_cntFnRev方法返回，针对该牌组，用户自定义增加的有效复习卡片数量
+            //_walkingCount返回所有活动牌组的当天要复习的有效卡片数量总和，
             mRevCount = _walkingCount(Sched.class.getDeclaredMethod("_deckRevLimitSingle", JSONObject.class),
                     Sched.class.getDeclaredMethod("_cntFnRev", long.class, int.class));
         } catch (NoSuchMethodException e) {
@@ -1255,17 +1311,19 @@ public class Sched {
 
 
     // Dynamically invoked in _walkingCount, passed as a parameter in _resetRevCount
+    // 返回今天实际还要复习的卡片数量；
     @SuppressWarnings("unused")
     private int _cntFnRev(long did, int lim) {
         return mCol.getDb().queryScalar(
+                // 获得这个牌组did中，复习的，今天过期的，前lim个卡片，将其返回，
                 "SELECT count() FROM (SELECT id FROM cards WHERE did = " + did + " AND queue = 2 and due <= " + mToday
                         + " LIMIT " + lim + ")");
     }
 
-
+    //重设复习项目
     private void _resetRev() {
-        _resetRevCount();
-        mRevQueue.clear();
+        _resetRevCount(); //重新计算活动牌组中当天要学习的复习卡片的总数量
+        mRevQueue.clear(); //清除复习卡片队列
         mRevDids = mCol.getDecks().active();
     }
 
@@ -1692,12 +1750,13 @@ public class Sched {
                         queue + ", due = ?, usn = ? WHERE id = ?", data);
     }
 
-
+    // 为动态卡片返回一个ivl，为动态卡片
     private int _dynIvlBoost(Card card) {
         if (card.getODid() == 0 || card.getType() != 2 || card.getFactor() == 0) {
             Timber.e("error: deck is not a filtered deck");
             return 0;
         }
+        // todo_john 不明白due,以后再说；
         long elapsed = card.getIvl() - (card.getODue() - mToday);
         double factor = ((card.getFactor() / 1000.0) + 1.2) / 2.0;
         int ivl = Math.max(1, Math.max(card.getIvl(), (int) (elapsed * factor)));
@@ -1758,20 +1817,23 @@ public class Sched {
     /**
      * Tools ******************************************************************** ***************************
      */
-
+    // 返回输入卡片的所在牌组的dconf
     public JSONObject _cardConf(Card card) {
         return mCol.getDecks().confForDid(card.getDid());
     }
 
-
+    // 返回当前卡片所在的牌组的dconf中的对于新卡片的配置信息；
     private JSONObject _newConf(Card card) {
         try {
+            // 返回输入卡片的所在牌组的dconf
             JSONObject conf = _cardConf(card);
             // normal deck
             if (card.getODid() == 0) {
+                // 如果卡片来自普通牌组；
                 return conf.getJSONObject("new");
             }
             // dynamic deck; override some attributes, use original deck for others
+            // oconf是卡片原来所在的牌组的dconf
             JSONObject oconf = mCol.getDecks().confForDid(card.getODid());
             JSONArray delays = conf.optJSONArray("delays");
             if (delays == null) {
@@ -1785,7 +1847,7 @@ public class Sched {
             // overrides
             dict.put("delays", delays);
             dict.put("separate", conf.getBoolean("separate"));
-            dict.put("order", Consts.NEW_CARDS_DUE);
+            dict.put("order", Consts.NEW_CARDS_DUE); // Consts.NEW_CARDS_DUE即新卡，按照插入顺序，而非随机顺序
             dict.put("perDay", mReportLimit);
             return dict;
         } catch (JSONException e) {
@@ -1793,9 +1855,10 @@ public class Sched {
         }
     }
 
-
+    //返回当前卡片的牌组的dconf对失误的卡片的配置信息
     private JSONObject _lapseConf(Card card) {
         try {
+            // 返回输入卡片的所在牌组的dconf
             JSONObject conf = _cardConf(card);
             // normal deck
             if (card.getODid() == 0) {
@@ -1837,15 +1900,16 @@ public class Sched {
         }
     }
 
-
+    // 获取活动的牌组，并链接成字符串，
     public String _deckLimit() {
         return Utils.ids2str(mCol.getDecks().active());
     }
 
-
+    // 是否重新安排学习计划；
     private boolean _resched(Card card) {
-        JSONObject conf = _cardConf(card);
+        JSONObject conf = _cardConf(card); // 获取卡片坐在的牌组的配置文件dconf
         try {
+            // 如果是不是动态卡片
             if (conf.getInt("dyn") == 0) {
                 return true;
             }
@@ -1864,8 +1928,10 @@ public class Sched {
     private void _updateCutoff() {
         int oldToday = mToday;
         // days since col created
+        // (Utils.now()-----(System.currentTimeMillis() / 1000.0)--->1431814401699 这是一个13位的长整形数字，单位是秒，
+        // mToday是自从这个集合被创建哪天算起，截至到今天，已过去几个整天了，
         mToday = (int) ((Utils.now() - mCol.getCrt()) / 86400); // 86400=60*60*24, one day;
-        // end of day cutoff
+        // end of day cutoff mDayCutoff是今天结束的那一刻，给个界定
         mDayCutoff = mCol.getCrt() + ((mToday + 1) * 86400);  // 计算截至日期的时间，精确到秒
         // crt 这个参数，在当前文件中的时间是2015/12/20---4：00；
         // 这样在就可以给所谓的今天一个时间范围，即 mToday*86400 到 (mToday + 1) * 86400；
@@ -1873,26 +1939,29 @@ public class Sched {
             mCol.log(mToday, mDayCutoff);
         }
         // update all daily counts, but don't save decks to prevent needless conflicts. we'll save on card answer
-        // instead
+        // instead 更新所有的 每日卡片计算，但是不保存到decks中，目的是为了避免不必要的冲突，我们将在回答卡片的时候保存到deck中；
         for (JSONObject deck : mCol.getDecks().all()) {
-            update(deck);
+            update(deck); // 更新deck中的newToday, revToday, lrnToday, timeToday的这四个数组，更新其第一个元素为mToday
         }
-        // unbury if the day has rolled over
+        // unbury if the day has rolled over 如果这一天滚完，就取消搁置
         int unburied = mCol.getConf().optInt("lastUnburied", 0);
         if (unburied < mToday) {
+            // 如果配置文件中的lastUnburied这个属性值小于mToday，则取消搁置；
             unburyCards();
         }
     }
 
-
+    // update(deck)，更新牌组中的newToday, revToday, lrnToday, timeToday这些属性数组的第一个元素，为mToday，
     private void update(JSONObject g) {
         for (String t : new String[] { "new", "rev", "lrn", "time" }) {
+            // 即newToday, revToday, lrnToday, timeToday
             String key = t + "Today";
             try {
                 if (g.getJSONArray(key).getInt(0) != mToday) {
                     JSONArray ja = new JSONArray();
-                    ja.put(mToday);
+                    ja.put(mToday); //假设mToday=183， 即此牌组集合被创建183天了，
                     ja.put(0);
+                    // ja则为：[183, 0]
                     g.put(key, ja);
                 }
             } catch (JSONException e) {
@@ -1903,7 +1972,7 @@ public class Sched {
 
 
     public void _checkDay() {
-        // check if the day has rolled over
+        // check if the day has rolled over检查今天到头了吗？
         if (Utils.now() > mDayCutoff) {
             reset();
         }

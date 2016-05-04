@@ -638,12 +638,13 @@ public class Decks {
         return confs;
     }
 
-
+    // 获取输入牌组did对应的配置信息，dconf
     public JSONObject confForDid(long did) {
         JSONObject deck = get(did, false);
         assert deck != null;
         if (deck.has("conf")) {
             try {
+                // 获取dconf,
                 JSONObject conf = getConf(deck.getLong("conf"));
                 conf.put("dyn", 0);
                 return conf;
@@ -651,7 +652,7 @@ public class Decks {
                 throw new RuntimeException(e);
             }
         }
-        // dynamic decks have embedded conf
+        // dynamic decks have embedded conf 动态牌组有内置dconf
         return deck;
     }
 

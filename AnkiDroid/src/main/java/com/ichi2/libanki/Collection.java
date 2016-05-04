@@ -1444,7 +1444,7 @@ public class Collection {
     	}
     }
 
-    //todo_john 为什么是这样呢？标记怎么与undo有关系呢？
+    //todo_john 这里的markReview与对卡片进行标记不同，没回答完一个卡片，系统都会mark一次，这是对学习过的卡片进行记录，用于撤销操作，
     public void markReview(Card card) {
         markUndo(UNDO_REVIEW, new Object[]{card, card.note().hasTag("leech")});
     }
@@ -1664,6 +1664,7 @@ public class Collection {
     /**
      * Logging
      * ***********************************************************
+     * 例如： mCol.log(mToday, mDayCutoff);
      */
 
     public void log(Object... args) {
