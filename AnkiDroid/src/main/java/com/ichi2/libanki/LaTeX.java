@@ -39,6 +39,7 @@ import java.util.regex.Pattern;
  */
 public class LaTeX {
 
+    // 客栈是不考虑；
     /**
      * Patterns used to identify LaTeX tags
      */

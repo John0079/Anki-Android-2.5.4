@@ -11,6 +11,7 @@ import java.util.Calendar;
 
 public class CardStats {
 
+    //此类涉及到学习进度的统计，暂时不考虑它；
     public static String report(Context context, Card c, Collection col) {
         Calendar cal = Calendar.getInstance();
         DateFormat df = new SimpleDateFormat("yyyy-MM-dd");

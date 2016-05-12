@@ -254,7 +254,7 @@ public class Card implements Cloneable {
         mCol.log(this);
     }
 
-
+    // 获得问题question的内容；
     public String q() {
         return q(false);
     }
@@ -269,12 +269,12 @@ public class Card implements Cloneable {
         return css() + _getQA(reload, browser).get("q");
     }
 
-
+    //获得答案anwser内容；
     public String a() {
         return css() + _getQA().get("a");
     }
 
-
+    //获取model笔记类型中css样式字段的内容；
     public String css() {
         try {
             return String.format(Locale.US, "<style>%s</style>", model().get("css"));

@@ -75,6 +75,7 @@ import timber.log.Timber;
  */
 public class Media {
 
+    //可暂时不考虑；
     private static final Pattern fIllegalCharReg = Pattern.compile("[><:\"/?*^\\\\|\\x00\\r\\n]");
     private static final Pattern fRemotePattern  = Pattern.compile("(https?|ftp)://");
 

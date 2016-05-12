@@ -72,7 +72,7 @@ public class Sched {
     private int mQueueLimit;
     // 报告限制
     private int mReportLimit;
-    // 是重复次数吗？不确定，可能是重复次数；
+    //  mReps默认是0，每次取出一张卡片，它就会累加1；
     private int mReps;
     // 有队列吗？
     private boolean mHaveQueues;
@@ -176,21 +176,23 @@ public class Sched {
                 card.setType(1); // 如果是新卡，则将它变成学习中的卡
             }
             // init reps to graduation //_startingLeft(card)返回开始剩余次数，比如返回1002，总共还要学习2次，但今天只能在学习一次，
-            card.setLeft(_startingLeft(card));
+            card.setLeft(_startingLeft(card)); //只要来自新卡队列，都先设置left， 通过left可以知道此卡来自于来自于全新，还是过滤；
             // dynamic?如果是过滤的卡片，并且卡片类型是复习的卡片，这种卡片进入新卡队列怎么办呢？
             if (card.getODid() != 0 && card.getType() == 2) {
+                // 这种情况说明此卡片，来自于过滤牌组，
                 if (_resched(card)) {
-                    // 如果要重新安排学习计划
+                    // 看一下，此过滤卡片的牌组是否声明重新安排学习计划，如果是，则往下走
                     // reviews get their ivl boosted on first sight
-                    // // _dynIvlBoost(card) 为动态卡片返回一个ivl，为动态卡片
+                    // // _dynIvlBoost(card) // 为动态卡片返回一个ivl，它会考虑上一次的ivl,最后一次看完距离现在的时间，以及卡片因子来计算一个合适的ivl返回；
                     card.setIvl(_dynIvlBoost(card));
-                    // 设置odue
+                    // 为卡片设置一个odue，用于卡片返回到原始牌组中的时候继续学习使用，
                     card.setODue(mToday + card.getIvl());
                 }
             }
             // 如果是来自全新卡片，则card设置：queue, type, left;
             // 如果来自失误卡片，则card设置： ivl, odue;
             _updateStats(card, "new"); // 对当前卡所在的牌组的dconf的newToday中的第二个字段累加1；
+            // 所谓的新卡片类型，新卡片队列，在他出现那一瞬间，当你给他选择下次出现时间那一刻，无论你选择哪个按钮，它都已变成学习中的卡片，并进入学习队列。
         }
         if (card.getQueue() == 1 || card.getQueue() == 3) {
             _answerLrnCard(card, ease);
@@ -214,7 +216,7 @@ public class Sched {
         return counts(null);
     }
 
-
+    // 给你一个卡片，你看吧，我该怎么累加，你说了算，
     public int[] counts(Card card) {
         int[] counts = {mNewCount, mLrnCount, mRevCount};
         if (card != null) {
@@ -242,7 +244,7 @@ public class Sched {
         return 0;
     }
 
-
+    // 放回当前卡片的队列索引号；
     public int countIdx(Card card) {
         if (card.getQueue() == 3) {
             return 1;
@@ -250,11 +252,12 @@ public class Sched {
         return card.getQueue();
     }
 
-
+    // 回答按钮个数；
     public int answerButtons(Card card) {
         if (card.getODue() != 0) {
-            // normal review in dyn deck?
+            // normal review in dyn deck? 如果是过滤卡片，或是过失卡片；
             if (card.getODid() != 0 && card.getQueue() == 2) {
+                // 如果处在过滤的牌组中，并且在复习队列，就返回4；
                 return 4;
             }
             JSONObject conf = _lrnConf(card);
@@ -294,7 +297,7 @@ public class Sched {
         String sids = Utils.ids2str(mCol.getDecks().active());
         mCol.log(mCol.getDb().queryColumn(Long.class, "select id from cards where queue = -2 and did in " + sids, 0));
         mCol.getDb().execute("update cards set mod=?,usn=?,queue=type where queue = -2 and did in " + sids,
-                new Object[] { Utils.intNow(), mCol.usn() });
+                new Object[]{Utils.intNow(), mCol.usn()});
     }
 
 
@@ -336,19 +339,23 @@ public class Sched {
         }
     }
 
-
+    // 扩展限制；
     public void extendLimits(int newc, int rev) {
+        // 获取当前牌组；
         JSONObject cur = mCol.getDecks().current();
         ArrayList<JSONObject> decks = new ArrayList<JSONObject>();
         decks.add(cur);
         try {
+            // 获取当前牌组的父牌组，并添加到decks中；
             decks.addAll(mCol.getDecks().parents(cur.getLong("id")));
             for (long did : mCol.getDecks().children(cur.getLong("id")).values()) {
+                // 获取当前牌组的子牌组，并加入集合中；
                 decks.add(mCol.getDecks().get(did));
             }
             for (JSONObject g : decks) {
                 // add
                 JSONArray ja = g.getJSONArray("newToday");
+                // ja.getInt(1)代表着今天已经学习的卡片的个数；或是复习的卡片的个数；
                 ja.put(1, ja.getInt(1) - newc);
                 g.put("newToday", ja);
                 ja = g.getJSONArray("revToday");
@@ -361,7 +368,8 @@ public class Sched {
         }
     }
 
-
+    // 走一步说一步，看看现在还有要学习或是复习多少张卡片，limFn计算出距离上限还要学习多少张；
+    // cntFn会计算出，实际还要学吸多少张卡片，
     private int _walkingCount(Method limFn, Method cntFn) {
         int tot = 0;
         HashMap<Long, Integer> pcounts = new HashMap<Long, Integer>();
@@ -390,7 +398,7 @@ public class Sched {
                 // see how many cards we actually have，看看当前的牌组中实际还要学习的复习卡片数量
                 int cnt = (Integer)cntFn.invoke(Sched.this, did, lim);
                 // if non-zero, decrement from parents counts
-                // todo_john 最终返回的只跟cnt有关系，为什么还要管什么pcount呢？
+                // todo_john 最终返回的只跟cnt有关系，为什么还要管什么pcount呢？这是个循环，它，还要循环回去下次使用；
                 for (JSONObject p : parents) {
                     long id = p.getLong("id");
                     pcounts.put(id, pcounts.get(id) - cnt);
@@ -418,11 +426,14 @@ public class Sched {
 
     /**
      * Returns [deckname, did, rev, lrn, new]
+     * 返回牌组列表所需要的数据；
      */
     public List<DeckDueTreeNode> deckDueList() {
-        _checkDay();
+        _checkDay(); // 看看需不需要reset；
+        // 覆盖孤儿卡，即它的牌组不在了，但是卡片还在，这时候，就把它的牌组id设置为1；即放入默认牌组；
         mCol.getDecks().recoverOrphans();
         ArrayList<JSONObject> decks = mCol.getDecks().allSorted();
+        // lims放置那些牌组已经被计算过这些数值了；{deck.getString("name"), new Integer[]{nlim, rlim}};
         HashMap<String, Integer[]> lims = new HashMap<String, Integer[]>();
         ArrayList<DeckDueTreeNode> data = new ArrayList<DeckDueTreeNode>();
         try {
@@ -430,9 +441,12 @@ public class Sched {
                 // if we've already seen the exact same deck name, remove the
                 // invalid duplicate and reload
                 if (lims.containsKey(deck.getString("name"))) {
+                    // 如果有重复的牌组名出现，则删除这个牌组，这个方法执行完毕，
+                    // 删除这个牌组deck，是否将它的卡片都删掉，是否将它的子牌组都删掉；
                     mCol.getDecks().rem(deck.getLong("id"), false, true);
                     return deckDueList();
                 }
+                // 获取给的牌组deck的父牌组的名字，放入p中；
                 String p;
                 List<String> parts = Arrays.asList(deck.getString("name").split("::", -1));
                 if (parts.size() < 2) {
@@ -441,28 +455,32 @@ public class Sched {
                     parts = parts.subList(0, parts.size() - 1);
                     p = TextUtils.join("::", parts);
                 }
-                // new
+                // new 获取今天还有几个新卡片需要学习，这个数字放到nlim中；
                 int nlim = _deckNewLimitSingle(deck);
                 if (!TextUtils.isEmpty(p)) {
                     if (!lims.containsKey(p)) {
                         // if parent was missing, this deck is invalid, and we need to reload the deck list
+                        // 如果父牌组已经没有了，这个牌组也就无效了，我们需要重新加载牌组列表；
                         mCol.getDecks().rem(deck.getLong("id"), false, true);
                         return deckDueList();
                     }
+                    // 子牌组要学习的卡片数量不能超过父牌组要学习的卡片的数量；
                     nlim = Math.min(nlim, lims.get(p)[0]);
                 }
+                // 返回这个牌组实际能返回的新卡片数量；
                 int _new = _newForDeck(deck.getLong("id"), nlim);
                 // learning
                 int lrn = _lrnForDeck(deck.getLong("id"));
                 // reviews
                 int rlim = _deckRevLimitSingle(deck);
                 if (!TextUtils.isEmpty(p)) {
+                    // 子牌组要复习的卡片的数量不能大于父牌组；
                     rlim = Math.min(rlim, lims.get(p)[1]);
                 }
                 int rev = _revForDeck(deck.getLong("id"), rlim);
                 // save to list
                 data.add(new DeckDueTreeNode(deck.getString("name"), deck.getLong("id"), rev, lrn, _new));
-                // add deck as a parent
+                // add deck as a parent 遍历过的牌组加到lims里面，
                 lims.put(deck.getString("name"), new Integer[]{nlim, rlim});
             }
         } catch (JSONException e) {
@@ -471,7 +489,7 @@ public class Sched {
         return data;
     }
 
-
+    // 牌组过期树状结构
     public List<DeckDueTreeNode> deckDueTree() {
         return _groupChildren(deckDueList());
     }
@@ -480,6 +498,7 @@ public class Sched {
     private List<DeckDueTreeNode> _groupChildren(List<DeckDueTreeNode> grps) {
         // first, split the group names into components
         for (DeckDueTreeNode g : grps) {
+            // 将牌组名字符串a::b::c::d 变成数组['a', 'b', 'c', 'd']
             g.names = g.names[0].split("::", -1);
         }
         // and sort based on those components
@@ -488,7 +507,7 @@ public class Sched {
         return _groupChildrenMain(grps);
     }
 
-
+    //                  children = _groupChildrenMain(children);
     private List<DeckDueTreeNode> _groupChildrenMain(List<DeckDueTreeNode> grps) {
         List<DeckDueTreeNode> tree = new ArrayList<DeckDueTreeNode>();
         // group and recurse
@@ -509,10 +528,18 @@ public class Sched {
                 } else {
                     // We've iterated past this head, so step back in order to use this node as the
                     // head in the next iteration of the outer loop.
+                    // 返回迭代器中的上一个元素；
                     it.previous();
                     break;
                 }
             }
+            /**
+             * 最后tail变成：
+             * ['a']                  , 0x23a3, 50, 5, 50,
+             * ['a', 'b']             , 0x23a4, 50, 5, 50,
+             * ['a', 'b', 'c']        , 0x23a5, 50, 5, 50,
+             * ['a', 'b', 'c', 'd']   , 0x23ae, 50, 5, 50,
+             */
             Long did = null;
             int rev = 0;
             int _new = 0;
@@ -527,12 +554,19 @@ public class Sched {
                     _new += c.newCount;
                 } else {
                     // set new string to tail
+                    // 对于c.names从['a' ,'b', 'c', 'd'] 变成 ['b', 'c', 'd']
                     String[] newTail = new String[c.names.length-1];
                     System.arraycopy(c.names, 1, newTail, 0, c.names.length-1);
                     c.names = newTail;
                     children.add(c);
                 }
             }
+            /**
+             * 最后childrens变成：
+             * ['a', 'b']             , 0x23a4, 50, 5, 50,
+             * ['a', 'b', 'c']        , 0x23a5, 50, 5, 50,
+             * ['a', 'b', 'c', 'd']   , 0x23ae, 50, 5, 50,
+             */
             children = _groupChildrenMain(children);
             // tally up children counts
             for (DeckDueTreeNode ch : children) {
@@ -551,8 +585,13 @@ public class Sched {
             } catch (JSONException e) {
                 throw new RuntimeException(e);
             }
+
+            tree.size();
+            tree.size();
             tree.add(new DeckDueTreeNode(head, did, rev, lrn, _new, children));
         }
+        tree.size();
+        tree.size();
         return tree;
     }
 
@@ -567,11 +606,12 @@ public class Sched {
      */
     private Card _getCard() {
         // learning card due?
-        Card c = _getLrnCard();
+        Card c = _getLrnCard(); //它会判断此刻有没有学习的卡片到期，如果有，则蹦出一个学习的卡片
         if (c != null) {
             return c;
         }
         // new first, or time for one?
+        // _timeForNewCard()此刻新卡片是否该展现出来呢？它取决于现在已经取出了多少张卡片，和新卡片系数；
         if (_timeForNewCard()) {
             c = _getNewCard();
             if (c != null) {
@@ -579,17 +619,17 @@ public class Sched {
             }
         }
         // Card due for review?
-        c = _getRevCard();
+        c = _getRevCard(); //直接从复习的卡片队列中取出一张卡片，拿来就用，
         if (c != null) {
             return c;
         }
         // day learning card due?
-        c = _getLrnDayCard();
+        c = _getLrnDayCard(); // 直接从天学习队列中取出一张卡片，拿来就用，
         if (c != null) {
             return c;
         }
         // New cards left?
-        c = _getNewCard();
+        c = _getNewCard();  // 直接去除新卡片吧，不用做任何判断
         if (c != null) {
             return c;
         }
@@ -714,6 +754,7 @@ public class Sched {
 
     /**
      * @return True if it's time to display a new card when distributing.
+     * 此刻新卡片是否该展现出来呢？它取决于现在已经取出了多少张卡片，和新卡片系数；
      */
     private boolean _timeForNewCard() {
         if (mNewCount == 0) {
@@ -722,6 +763,7 @@ public class Sched {
         int spread;
         try {
             spread = mCol.getConf().getInt("newSpread");
+            // spread表示，新卡片是否与复习的卡片混编队列，或是怎么样！
         } catch (JSONException e) {
             throw new RuntimeException(e);
         }
@@ -730,6 +772,7 @@ public class Sched {
         } else if (spread == Consts.NEW_CARDS_FIRST) {
             return true;
         } else if (mNewCardModulus != 0) {
+            // mReps在每次初始化的时候都为0，然后蹦出一张卡片，这个值就累加1
             return (mReps != 0 && (mReps % mNewCardModulus == 0));
         } else {
             return false;
@@ -774,6 +817,7 @@ public class Sched {
 
 
     /* New count for a single deck. */
+    // 这个牌组实际能返回的新卡片数量；
     public int _newForDeck(long did, int lim) {
     	if (lim == 0) {
     		return 0;
@@ -828,7 +872,7 @@ public class Sched {
     }
 
 
-    // sub-day learning
+    // sub-day learning即为;重新生成学习队列，并看看学习的队列lrn里面有没有内容呢？
     private boolean _fillLrn() {
         if (mLrnCount == 0) {
             return false;
@@ -837,12 +881,13 @@ public class Sched {
             return true;
         }
         Cursor cur = null;
-        mLrnQueue.clear();
+        mLrnQueue.clear(); // 先把学习队列清空
         try {
             cur = mCol
                     .getDb()
                     .getDatabase()
                     .rawQuery(
+                            // _deckLimit() 获取活动的牌组，并链接成字符串，
                             "SELECT due, id FROM cards WHERE did IN " + _deckLimit() + " AND queue = 1 AND due < "
                                     + mDayCutoff + " LIMIT " + mReportLimit, null);
             while (cur.moveToNext()) {
@@ -871,7 +916,8 @@ public class Sched {
 
     private Card _getLrnCard(boolean collapse) {
         if (_fillLrn()) {
-            double cutoff = Utils.now();
+            // _fillLrn()创建学习队列，并看看队列里面有没有内容
+            double cutoff = Utils.now(); // 获得当前的秒数；
             if (collapse) {
                 try {
                     cutoff += mCol.getConf().getInt("collapseTime");
@@ -880,9 +926,11 @@ public class Sched {
                 }
             }
             if (mLrnQueue.getFirst()[0] < cutoff) {
-                long id = mLrnQueue.remove()[1];
+                // 如果学习列表的第一个元素，即第一个卡片的预期时间是1234秒，而现在的时间是1235秒，说明此卡片已经预期了，好了，把他弹出来吧！
+                // mLrnQueue 的元素（c.due c.id）
+                long id = mLrnQueue.remove()[1]; // remove()会调用removeFirstImpl()；
                 Card card = mCol.getCard(id);
-                mLrnCount -= card.getLeft() / 1000;
+                mLrnCount -= card.getLeft() / 1000; //只要这个学习的卡片弹出来，学习的计数就减少tod个，
                 return card;
             }
         }
@@ -946,45 +994,59 @@ public class Sched {
 
 
     /**
-     * @param ease 1=no, 2=yes, 3=remove
+     * 即，回答学习队列的卡片的问题，该如何处置呢？
+     * 它分两种情况，一种是回答完，进入复习队列，二种是回答完还处在学习队列，三种是回答完进入lapse
+     * @param ease 1=no, 2=yes, 3=remove 学习中的卡片一般都是三个选项按钮，
+     * 所谓的新卡片类型，新卡片队列，在他出现那一瞬间，当你给他选择下次出现时间那一刻，无论你选择哪个按钮，它都已变成学习中的卡片，并进入学习队列。
      */
     private void _answerLrnCard(Card card, int ease) {
         JSONObject conf = _lrnConf(card); // 返回学习状态的配置信息可能是new的也可能是lapse的；
-        int type;
+        int type; // 问一问这个学习卡片队列的卡片的出处，是来自于哪里，是来自于新卡片呢？还是复习中的卡片呢？还是来自过滤的牌组呢?
         if (card.getODid() != 0 && !card.getWasNew()) {
-            type = 3; // 这种情况，即为过滤的卡片，但要隔天才能显示出来的，
+            type = 3; // 过滤出的牌组中的学习类型卡片和复习类型卡片
         } else if (card.getType() == 2) {
-            type = 2; // 普通复习的卡片
+            type = 2; // 普通类型的复习类型卡片，因为lapse，而进入学习队列
         } else {
-            type = 0; //新卡片
+            type = 0; //有新卡片直接变成的学习中的卡片，或是本来就在新卡片的学习阶段；
         }
+        // Todo_john 这里的leaving是啥意思呢？
         boolean leaving = false;
         // lrnCount was decremented once when card was fetched 当卡片被抽出，学习的次数减少一次；
         int lastLeft = card.getLeft();
-        // immediate graduate?
+        // immediate graduate? 你要立即毕业吗？
         if (ease == 3) {
+            // 只有新卡片的学习才会进入这里，无论是新卡片的第一次学习，还是第二次学习，点击第三个按钮都会进入这里来
             _rescheduleAsRev(card, conf, true);
             leaving = true;
             // graduation time?
         } else if (ease == 2 && (card.getLeft() % 1000) - 1 <= 0) {
+            // 如果处在学习队列中，但是剩下的学习次数小于等于1，
+            // 进入这里有两种情况，一种是新卡片第二次学习，点击第二个按钮
+            // 还有一种情况是，过滤卡片或失误卡片点击第二个按钮，
             _rescheduleAsRev(card, conf, false);
             leaving = true;
         } else {
-            // one step towards graduation
+            // one step towards graduation 这种情况是，回答完还进入学习队列；还要在学习一次，
             if (ease == 2) {
                 // decrement real left count and recalculate left today
                 int left = (card.getLeft() % 1000) - 1;
                 try {
+                    // 设置left，学习队列中的卡片都要设置left
                     card.setLeft(_leftToday(conf.getJSONArray("delays"), left) * 1000 + left);
                 } catch (JSONException e) {
                     throw new RuntimeException(e);
                 }
                 // failed
             } else {
+                // 这个时候即ease = 1, 它有两种可能的状况，一种是学习队列中的卡，点击了它，一种是复习队列中的卡点击了他；
+                // 不管哪种都要设置它的left；
                 card.setLeft(_startingLeft(card));
+                // 看这张卡片要不要重新安排学习进度，如果是普通牌组卡片的必须要，如果是过滤牌组卡片参阅过滤参数，
                 boolean resched = _resched(card);
                 if (conf.has("mult") && resched) {
                     // review that's lapsed
+                    // 如果是lapse配置，且允许重新安排学习进度的，这有两种可能，一是lapse,二是过滤牌组的
+                    // 新卡学习过程中不会走到这里来；
                     try {
                         card.setIvl(Math.max(Math.max(1, (int) (card.getIvl() * conf.getDouble("mult"))), conf.getInt("minInt")));
                     } catch (JSONException e) {
@@ -998,15 +1060,16 @@ public class Sched {
                     card.setODue(mToday + 1);
                 }
             }
+            // 返回距离下一学习阶段还需要的延迟时间，
             int delay = _delayForGrade(conf, card.getLeft());
             if (card.getDue() < Utils.now()) {
                 // not collapsed; add some randomness
                 delay *= (1 + (new Random().nextInt(25) / 100));
             }
-            // TODO: check, if type for second due is correct
+            // 为要继续学习的卡片，即进入学习队列的卡片设置到期时间，这个到期时间将是以秒为单位的整数；
             card.setDue((int) (Utils.now() + delay));
 
-            // due today?
+            // due today? 如果这张学习卡片的到期时间小于今天的截至时间，则
             if (card.getDue() < mDayCutoff) {
                 mLrnCount += card.getLeft() / 1000;
                 // if the queue is not empty and there's nothing else to do, make
@@ -1014,28 +1077,36 @@ public class Sched {
                 // it twice in a row
                 card.setQueue(1);
                 if (!mLrnQueue.isEmpty() && mRevCount == 0 && mNewCount == 0) {
+                    // 如果复习队列空了，新卡队列也空了，这时候要保证，这张卡的过期时间不是最小的，避免同张卡片连续出现；
                     long smallestDue = mLrnQueue.getFirst()[0];
                     card.setDue(Math.max(card.getDue(), smallestDue + 1));
                 }
+                // 将这张卡片按准确的顺序放入学习队列中；
                 _sortIntoLrn(card.getDue(), card.getId());
+                // 如果这张卡的到期时间超越今天时间极限，则：
             } else {
                 // the card is due in one or more days, so we need to use the day learn queue
                 long ahead = ((card.getDue() - mDayCutoff) / 86400) + 1;
                 card.setDue(mToday + ahead);
+                // 将其卡片设置到天学习队列；
                 card.setQueue(3);
             }
         }
         _logLrn(card, ease, conf, leaving, type, lastLeft);
     }
 
-
+    // 返回距离下一学习阶段还需要的延迟时间，
     private int _delayForGrade(JSONObject conf, int left) {
+        // 还剩下学习的次数
         left = left % 1000;
         try {
             double delay;
             JSONArray ja = conf.getJSONArray("delays");
             int len = ja.length();
             try {
+                // 下一次学习的延迟时间是多少？
+                // 如果有2个阶段的学习，剩下1次学习，则，要进行第（2-1）+1 次啦，它的延续时间是dalays(2-1)
+                // 如果有2个阶段的学习，还剩下2次嘘唏，则，要进行（2-2）+1 次啦，它的延迟时间是dalays(2-2);
                 delay = ja.getDouble(len - left);
             } catch (JSONException e) {
             	if (conf.getJSONArray("delays").length() > 0) {
@@ -1062,17 +1133,29 @@ public class Sched {
         }
     }
 
-
+    /**
+     *
+     * @param card
+     * @param conf  学习状态的配置信息可能是new的也可能是lapse的；
+     * @param early
+     */
     private void _rescheduleAsRev(Card card, JSONObject conf, boolean early) {
-        boolean lapse = (card.getType() == 2);
+        boolean lapse = (card.getType() == 2); //是不是失误，或是过滤牌组而进入学习队列的？
+        // 如果走入复习队列之前是因为失误，或是过滤牌组，
         if (lapse) {
             if (_resched(card)) {
+                // 是否重新安排学习计划；首先判断卡片所在的牌组是不是过滤牌组，则是因为失误，而进入学习队列的，则返回true
+                // 如果卡片所在的牌组是过滤牌组，则返回配置文件conf的resched属性值
+
+                // 根据odue设置新的due;如果是失误造成的，则due的日期设置成明天，否则拿明天和原来的odue比较，哪个大用哪个。
                 card.setDue(Math.max(mToday + 1, card.getODue()));
             } else {
                 card.setDue(card.getODue());
             }
             card.setODue(0);
         } else {
+            // 这种情况只有是新卡走入复习队列才能进来，early = true 表示是点击新卡学习中的第三个按钮进来的，
+            // early = false 表示，是在新卡学习的第二次点击第二个按钮进来的，
             _rescheduleNew(card, conf, early);
         }
         card.setQueue(2);
@@ -1147,13 +1230,22 @@ public class Sched {
         return _graduatingIvl(card, conf, early, true);
     }
 
-
+    /**
+     * 当新卡片毕业后，会进入复习队列，即新卡片进入复习队列，有两种情况，一种是学习中点击第三个按钮进入复习队列early = true,
+     * 一种是经过至少一次学习之后点击第二个按钮进入复习队列的，这时early = false;
+     * @param card
+     * @param conf
+     * @param early 是点击第三个按钮进入的，还是点击第二个按钮进入的；
+     * @param adj 是否要对ivl进行调节呢？
+     * @return
+     */
     private int _graduatingIvl(Card card, JSONObject conf, boolean early, boolean adj) {
         if (card.getType() == 2) {
             // lapsed card being relearnt
             if (card.getODid() != 0) {
                 try {
                     if (conf.getBoolean("resched")) {
+                        //为动态卡片返回一个ivl，为动态卡片
                         return _dynIvlBoost(card);
                     }
                 } catch (JSONException e) {
@@ -1162,6 +1254,7 @@ public class Sched {
             }
             return card.getIvl();
         }
+        // 如果进来的是全新的卡片学习而造成的进入复习队列，即毕业，按照下面方法做；
         int ideal;
         JSONArray ja;
         try {
@@ -1173,6 +1266,7 @@ public class Sched {
                 ideal = ja.getInt(1);
             }
             if (adj) {
+                // 返回一个调节过的interval
                 return _adjRevIvl(card, ideal);
             } else {
                 return ideal;
@@ -1183,11 +1277,16 @@ public class Sched {
     }
 
 
-    /* Reschedule a new card that's graduated for the first time. */
+    /* Reschedule a new card that's graduated for the first time.只有新卡片才会走到这里来；
+    * 设置一个新卡片的复习进度安排，即设置卡片的 ivl 和 due
+    * 这个新卡片进入学习队列，可能是第一次出现就进去，这时候early = true;
+    * 也可能是 学习了一次才进去，这时early = false；
+    * */
     private void _rescheduleNew(Card card, JSONObject conf, boolean early) {
         card.setIvl(_graduatingIvl(card, conf, early));
         card.setDue(mToday + card.getIvl());
         try {
+            // 新卡片走入复习队列后，卡片的因子设置成和初始化因子；
             card.setFactor(conf.getInt("initialFactor"));
         } catch (JSONException e) {
             throw new RuntimeException(e);
@@ -1413,6 +1512,7 @@ public class Sched {
 
     /**
      * Answering a review card **************************************************
+     * 对一个复习队列中的卡片做了回答之后该如何操作；
      * *********************************************
      */
 
@@ -1421,33 +1521,38 @@ public class Sched {
         if (ease == 1) {
             delay = _rescheduleLapse(card);
         } else {
+            // 如果回答的按钮不是第一个，如何处理？
             _rescheduleRev(card, ease);
         }
         _logRev(card, ease, delay);
     }
 
-
+    // 当一个复习中的卡片，点击第一个按钮的时候，将执行意下操作；
     private int _rescheduleLapse(Card card) {
         JSONObject conf;
         try {
             conf = _lapseConf(card);
             card.setLastIvl(card.getIvl());
             if (_resched(card)) {
+                // 如果从新设置卡进度；
                 card.setLapses(card.getLapses() + 1);
+                // 设置lapse间隔；
                 card.setIvl(_nextLapseIvl(card, conf));
+                // factor为（1300， 2500-200）的最大值；
                 card.setFactor(Math.max(1300, card.getFactor() - 200));
+                // 设置过期时间；
                 card.setDue(mToday + card.getIvl());
                 // if it's a filtered deck, update odue as well
                 if (card.getODid() != 0) {
                     card.setODue(card.getDue());
                 }
             }
-            // if suspended as a leech, nothing to do
+            // if suspended as a leech, nothing to do 如果被认为是水蛭卡，暂停掉的时候，什么也不做；
             int delay = 0;
             if (_checkLeech(card, conf) && card.getQueue() == -1) {
                 return delay;
             }
-            // if no relearning steps, nothing to do
+            // if no relearning steps, nothing to do 如果没有重新学习阶段，什么也不做；
             if (conf.getJSONArray("delays").length() == 0) {
                 return delay;
             }
@@ -1455,8 +1560,10 @@ public class Sched {
             if (card.getODue() == 0) {
                 card.setODue(card.getDue());
             }
+            // 算出距离下一阶段的延迟时间；
             delay = _delayForGrade(conf, 0);
             card.setDue((long) (delay + Utils.now()));
+            // 设置今天还有多少次学习，今天要学习多少次；
             card.setLeft(_startingLeft(card));
             // queue 1
             if (card.getDue() < mDayCutoff) {
@@ -1475,7 +1582,7 @@ public class Sched {
         }
     }
 
-
+    // 返回lapse后的间隔；
     private int _nextLapseIvl(Card card, JSONObject conf) {
         try {
             return Math.max(conf.getInt("minInt"), (int)(card.getIvl() * conf.getDouble("mult")));
@@ -1484,13 +1591,15 @@ public class Sched {
         }
     }
 
-
+    // 复习卡片的时候，卡片来自复习队列，回答不是第一个该如何处理呢？
     private void _rescheduleRev(Card card, int ease) {
         // update interval
         card.setLastIvl(card.getIvl());
         if (_resched(card)) {
+            // 更新复习间隔，给出参数，当前卡片，和被点击的按钮序号，序号>=2;
             _updateRevIvl(card, ease);
             // then the rest
+            // 修改卡片因子；
             card.setFactor(Math.max(1300, card.getFactor() + FACTOR_ADDITION_VALUES[ease - 2]));
             card.setDue(mToday + card.getIvl());
         } else {
@@ -1517,13 +1626,18 @@ public class Sched {
 
     /**
      * Ideal next interval for CARD, given EASE.
+     * 计算获取下一次卡片出来的间隔；
      */
     private int _nextRevIvl(Card card, int ease) {
         try {
+            // 按照卡片的复习时间，你已经逾期几天，拖延几天，没有复习这张卡片了,假设预期5天，之前的ivl是4，
             long delay = _daysLate(card);
             int interval = 0;
+            // 拿出复习的配置信息；
             JSONObject conf = _revConf(card);
+            // 卡片的初始因子是2500；每失误一次，就会减少200；
             double fct = card.getFactor() / 1000.0;
+            // 返回应用约束的间隔；
             int ivl2 = _constrainedIvl((int)((card.getIvl() + delay/4) * 1.2), conf, card.getIvl());
             int ivl3 = _constrainedIvl((int)((card.getIvl() + delay/2) * fct), conf, ivl2);
             int ivl4 = _constrainedIvl((int)((card.getIvl() + delay) * fct * conf.getDouble("ease4")), conf, ivl3);
@@ -1541,6 +1655,7 @@ public class Sched {
         }
     }
 
+    // 返回回个模糊的随机的interval
     private int _fuzzedIvl(int ivl) {
         int[] minMax = _fuzzedIvlRange(ivl);
         // Anki's python uses random.randint(a, b) which returns x in [a, b] while the eq Random().nextInt(a, b)
@@ -1548,7 +1663,7 @@ public class Sched {
         return (new Random().nextInt(minMax[1] - minMax[0] + 1)) + minMax[0];
     }
 
-
+    // 模糊化间隔范围
     public int[] _fuzzedIvlRange(int ivl) {
         int fuzz;
         if (ivl < 2) {
@@ -1568,7 +1683,9 @@ public class Sched {
     }
 
 
-    /** Integer interval after interval factor and prev+1 constraints applied */
+    /** Integer interval after interval factor and prev+1 constraints applied
+     *  返回应用约束的间隔；
+     * */
     private int _constrainedIvl(int ivl, JSONObject conf, double prev) {
     	double newIvl = ivl;
     	newIvl = ivl * conf.optDouble("ivlFct",1.0);
@@ -1578,19 +1695,20 @@ public class Sched {
 
     /**
      * Number of days later than scheduled.
+     * 按照卡片的复习时间，你已经逾期几天没有复习这张卡片了
      */
     private long _daysLate(Card card) {
         long due = card.getODid() != 0 ? card.getODue() : card.getDue();
         return Math.max(0, mToday - due);
     }
 
-
+    // 更新复习间隔，给出参数，当前卡片，和被点击的按钮序号，序号>=2;
     private void _updateRevIvl(Card card, int ease) {
         int idealIvl = _nextRevIvl(card, ease);
         card.setIvl(_adjRevIvl(card, idealIvl));
     }
 
-
+    // 返回一个调节过的ivl
     private int _adjRevIvl(Card card, int idealIvl) {
         if (mSpreadRev) {
             idealIvl = _fuzzedIvl(idealIvl);
@@ -1750,18 +1868,23 @@ public class Sched {
                         queue + ", due = ?, usn = ? WHERE id = ?", data);
     }
 
-    // 为动态卡片返回一个ivl，为动态卡片
+    // 为动态卡片返回一个ivl，它会考虑上一次的ivl,最后一次看完距离现在的时间，以及卡片因子来计算一个合适的ivl返回；
     private int _dynIvlBoost(Card card) {
         if (card.getODid() == 0 || card.getType() != 2 || card.getFactor() == 0) {
+            // 如果不是过滤的卡片，或不是复习的卡片，或卡片因子等于0的，直接返回0；
             Timber.e("error: deck is not a filtered deck");
             return 0;
         }
-        // todo_john 不明白due,以后再说；
+        //card.getODue() - mToday，表示如果上次说间隔是7天，第10天到期，今天是第8天了，说明还有两天到期，上次的间隔，减去还剩下的
+        //天数，就是，自从上次看了之后，到今天已经逝去的天数，的时间，
         long elapsed = card.getIvl() - (card.getODue() - mToday);
+        // 根据卡片因子，和已经逝去的时间，以及上次的间隔，来计算下一次的间隔时间，
         double factor = ((card.getFactor() / 1000.0) + 1.2) / 2.0;
         int ivl = Math.max(1, Math.max(card.getIvl(), (int) (elapsed * factor)));
+        // 取出卡片所在的牌组的dconf的rev配置信息，如果是过滤牌组，就取出原来所在牌组的相关信息
         JSONObject conf = _revConf(card);
         try {
+            // 保证ivl不超出限制；
             return Math.min(conf.getInt("maxIvl"), ivl);
         } catch (JSONException e) {
             throw new RuntimeException(e);
@@ -1885,15 +2008,17 @@ public class Sched {
         }
     }
 
-
+    //取出卡片所在的牌组的dconf的rev配置信息，如果是过滤牌组，就取出原来所在牌组的相关信息
     private JSONObject _revConf(Card card) {
         try {
+            //去除卡片card所在的牌组的dconf
             JSONObject conf = _cardConf(card);
             // normal deck
             if (card.getODid() == 0) {
+                // 如果是普通牌组，则返回dconf的rev配置信息
                 return conf.getJSONObject("rev");
             }
-            // dynamic deck
+            // dynamic deck如果是过滤牌组，就取出原来牌组的dconf的rev配置信息
             return mCol.getDecks().confForDid(card.getODid()).getJSONObject("rev");
         } catch (JSONException e) {
             throw new RuntimeException(e);
@@ -1905,14 +2030,17 @@ public class Sched {
         return Utils.ids2str(mCol.getDecks().active());
     }
 
-    // 是否重新安排学习计划；
+    // 是否重新安排学习计划；首先判断卡片所在的牌组是不是过滤牌组，则是因为失误，而进入学习队列的，则返回true
+    // 如果卡片所在的牌组是过滤牌组，则返回配置文件conf的resched属性值
     private boolean _resched(Card card) {
-        JSONObject conf = _cardConf(card); // 获取卡片坐在的牌组的配置文件dconf
+        JSONObject conf = _cardConf(card); // 获取卡片所在的牌组的配置文件dconf
         try {
             // 如果是不是动态卡片
             if (conf.getInt("dyn") == 0) {
+                // 即，如果是因为失误而造成的进入学习队列，要重新安排学习进度，则返回true，
                 return true;
             }
+            // 程序走到这里，说明是由于过滤牌组而走入学习队列，是否要重新安排学习进度，根据过滤牌组的配置而定，
             return conf.getBoolean("resched");
         } catch (JSONException e) {
             throw new RuntimeException(e);
@@ -2570,6 +2698,7 @@ public class Sched {
 
     /**
      * Sorts a card into the lrn queue LIBANKI: not in libanki
+     * // 将这张卡片按准确的顺序放入学习队列中；
      */
     private void _sortIntoLrn(long due, long id) {
         Iterator i = mLrnQueue.listIterator();

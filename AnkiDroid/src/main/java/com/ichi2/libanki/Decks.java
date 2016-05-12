@@ -162,7 +162,7 @@ public class Decks {
         mChanged = false;
     }
 
-
+    // 保存牌组
     public void save() {
         save(null);
     }
@@ -229,6 +229,7 @@ public class Decks {
 
     /**
      * Add a deck with NAME. Reuse deck if already exists. Return id as int.
+     * 添加一个新牌组，如果这个牌组名字存在，就返回这个牌组的id
      */
     public Long id(String name, boolean create, String type) {
         try {
@@ -266,12 +267,12 @@ public class Decks {
         }
     }
 
-
+    // 删除一个牌组
     public void rem(long did) {
         rem(did, false);
     }
 
-
+    // 删除一个牌组
     public void rem(long did, boolean cardsToo) {
         rem(did, cardsToo, true);
     }
@@ -279,12 +280,14 @@ public class Decks {
 
     /**
      * Remove the deck. If cardsToo, delete any cards inside.
+     * 删除一个牌组，是否将它的卡片都删掉，是否将它的子牌组都删掉；
      */
     public void rem(long did, boolean cardsToo, boolean childrenToo) {
         try {
             if (did == 1) {
             	// we won't allow the default deck to be deleted, but if it's a
             	// child of an existing deck then it needs to be renamed
+                // 如果牌组的id是1，将他的名字改成default
             	JSONObject deck = get(did);
             	if (deck.getString("name").contains("::")) {
             		deck.put("name", "Default");
@@ -344,6 +347,7 @@ public class Decks {
 
     /**
      * An unsorted list of all deck names.
+     * 返回一个牌组集合，牌组的名字没有排序；
      */
     public ArrayList<String> allNames(boolean dyn) {
         ArrayList<String> list = new ArrayList<>();
@@ -368,6 +372,7 @@ public class Decks {
 
     /**
      * A list of all decks.
+     * 返回所有排序的集合；
      */
     public ArrayList<JSONObject> all() {
         ArrayList<JSONObject> decks = new ArrayList<>();
@@ -384,6 +389,7 @@ public class Decks {
      *
      * This method does not exist in the original python module but *must* be used for any user
      * interface components that display a deck list to ensure the ordering is consistent.
+     * 返回所有的牌组，这个牌组的名字是排过序的；
      */
     public ArrayList<JSONObject> allSorted() {
         ArrayList<JSONObject> decks = all();
@@ -400,12 +406,12 @@ public class Decks {
         return decks;
     }
 
-
+    // 返回所有牌组的id数组；
     public Long[] allIds() {
         return mDecks.keySet().toArray(new Long[mDecks.keySet().size()]);
     }
 
-
+    // collpase是塌陷，折叠的意思，牌组的json文件中有这个属性，具体意思暂时不清楚；
     public void collpase(long did) {
         try {
             JSONObject deck = get(did);
@@ -431,17 +437,18 @@ public class Decks {
 
     /**
      * Return the number of decks.
+     * // 返回牌组的总数
      */
     public int count() {
         return mDecks.size();
     }
 
-
+    // 通过牌组id取出牌组；
     public JSONObject get(long did) {
         return get(did, true);
     }
 
-
+    // 通过牌组id取出牌组；
     public JSONObject get(long did, boolean _default) {
         if (mDecks.containsKey(did)) {
             return mDecks.get(did);
@@ -454,7 +461,7 @@ public class Decks {
 
 
     /**
-     * Get deck with NAME.
+     * Get deck with NAME.通过名字获取牌组；
      */
     public JSONObject byName(String name) {
 		try {
@@ -471,6 +478,7 @@ public class Decks {
 
 
     /**
+     * 添加或更新一个存在的牌组；
      * Add or update an existing deck. Used for syncing and merging.
      */
     public void update(JSONObject g) {
@@ -487,6 +495,7 @@ public class Decks {
 
     /**
      * Rename deck prefix to NAME if not exists. Updates children.
+     * 重命名一个牌组名的前缀，如果她有子牌组，则更新它的子牌组；
      */
     public void rename(JSONObject g, String newName) throws DeckRenameException {
         // make sure target node doesn't already exist
@@ -526,7 +535,7 @@ public class Decks {
         }
     }
 
-
+    // 重命名那些拖拽的，或是下拉的，不很明白，暂时放在这里；
     public void renameForDragAndDrop(Long draggedDeckDid, Long ontoDeckDid) throws DeckRenameException {
         try {
             JSONObject draggedDeck = get(draggedDeckDid);
@@ -548,7 +557,7 @@ public class Decks {
         }
     }
 
-
+    // 这个牌组，是否可以拖拽，不很明白；
     private boolean _canDragAndDrop(String draggedDeckName, String ontoDeckName) {
         if (draggedDeckName.equals(ontoDeckName)
                 || _isParent(ontoDeckName, draggedDeckName)
@@ -559,7 +568,7 @@ public class Decks {
         }
     }
 
-
+    // 它是父牌组吗？
     private boolean _isParent(String parentDeckName, String childDeckName) {
         List<String> parentDeckPath = _path(parentDeckName);
         parentDeckPath.add(_basename(childDeckName));
@@ -574,7 +583,7 @@ public class Decks {
         return true;
     }
 
-
+    //是祖先牌组吗？即，是跟牌组吗？
     private boolean _isAncestor(String ancestorDeckName, String descendantDeckName) {
         Iterator<String> apIt = _path(ancestorDeckName).iterator();
         Iterator<String> dpIt = _path(descendantDeckName).iterator();
@@ -586,7 +595,7 @@ public class Decks {
         return true;
     }
 
-
+    // 返回返回路径；
     private List<String> _path(String name) {
         return Arrays.asList(name.split("::", -1));
     }
@@ -598,6 +607,7 @@ public class Decks {
 
     /**
      * Ensure parents exist, and return name with case matching parents.
+     * 确认父存在，返回匹配到的父牌组名字；
      */
     public String _ensureParents(String name) {
         String s = "";
@@ -629,6 +639,7 @@ public class Decks {
 
     /**
      * A list of all deck config.
+     * 所有牌组的配置文件conf的集合；
      */
     public ArrayList<JSONObject> allConf() {
         ArrayList<JSONObject> confs = new ArrayList<>();
@@ -661,7 +672,7 @@ public class Decks {
         return mDconf.get(confId);
     }
 
-
+    // 更新牌组的配置信息；
     public void updateConf(JSONObject g) {
         try {
             mDconf.put(g.getLong("id"), g);
@@ -671,7 +682,7 @@ public class Decks {
         save();
     }
 
-
+    // 获得这个牌组的配置信息的id
     public long confId(String name) {
         return confId(name, defaultConf);
     }
@@ -679,6 +690,7 @@ public class Decks {
 
     /**
      * Create a new configuration and return id.
+     * 创建一个新的牌组配置，并返回它的id;
      */
     public long confId(String name, String cloneFrom) {
         JSONObject c;
@@ -704,6 +716,7 @@ public class Decks {
 
     /**
      * Remove a configuration and update all decks using it.
+     * 删除一个牌组配置，并更新所有用到它的牌组
      * @throws ConfirmModSchemaException 
      */
     public void remConf(long id) throws ConfirmModSchemaException {
@@ -726,7 +739,7 @@ public class Decks {
         }
     }
 
-
+    // 设置牌组配置信息；
     public void setConf(JSONObject grp, long id) {
         try {
             grp.put("conf", id);
@@ -736,7 +749,7 @@ public class Decks {
         save(grp);
     }
 
-
+    // 获得牌组配置信息的id;
     public List<Long> didsForConf(JSONObject conf) {
         List<Long> dids = new ArrayList<>();
         try {
@@ -751,7 +764,7 @@ public class Decks {
         }
     }
 
-
+    //回复牌组的配置为默认，
     public void restoreToDefault(JSONObject conf) {
         try {
             int oldOrder = conf.getJSONObject("new").getInt("order");
@@ -775,7 +788,7 @@ public class Decks {
      * ***********************************************************
      */
 
-
+    //通过牌组id返回牌组名字；
     public String name(long did) {
         return name(did, false);
     }
@@ -793,7 +806,7 @@ public class Decks {
         }
     }
 
-
+    //通过牌组id获取它的名字；
     public String nameOrNone(long did) {
         JSONObject deck = get(did, false);
         if (deck != null) {
@@ -806,13 +819,13 @@ public class Decks {
         return null;
     }
 
-
+    //重设，或更新某个牌组；
     public void setDeck(long[] cids, long did) {
         mCol.getDb().execute("update cards set did=?,usn=?,mod=? where id in " + Utils.ids2str(cids),
                 new Object[] { did, mCol.usn(), Utils.intNow() });
     }
 
-
+    //重新选择当前牌组，
     private void maybeAddToActive() {
         // reselect current deck, or default if current has disappeared
         JSONObject c = current();
@@ -823,7 +836,7 @@ public class Decks {
         }
     }
 
-
+    //获得当前牌组的所有卡片的id值，并以数组形式返回；
     public Long[] cids(long did) {
         return cids(did, false);
     }
@@ -842,7 +855,7 @@ public class Decks {
                 "select id from cards where did in " + Utils.ids2str(Utils.arrayList2array(dids)), 0));
     }
 
-
+    // 覆盖孤儿卡，即它的牌组不在了，但是卡片还在，这时候，就把它的牌组id设置为1；即放入默认牌组；
     public void recoverOrphans() {
         Long[] dids = allIds();
         boolean mod = mCol.getDb().getMod();
@@ -877,6 +890,7 @@ public class Decks {
 
     /**
      * The currently selected did.
+     * 返回当前选择的牌组的id;
      */
     public long selected() {
         try {
@@ -886,7 +900,7 @@ public class Decks {
         }
     }
 
-
+    //放回当前的牌组的内容；json描述；
     public JSONObject current() {
         return get(selected());
     }
@@ -894,6 +908,7 @@ public class Decks {
 
     /**
      * Select a new branch.
+     * 选择一个牌组；
      */
     public void select(long did) {
         try {
@@ -918,6 +933,7 @@ public class Decks {
 
     /**
      * All children of did as nodes of (key:name, value:id)
+     * 返回给定牌组的所有子牌组；
      *
      * TODO: There is likely no need for this collection to be a TreeMap. This method should not
      * need to sort on behalf of select().
@@ -971,6 +987,7 @@ public class Decks {
 
     /**
      * Sync handling
+     * 更新前的处理工作；
      * ***********************************************************
      */
 
@@ -997,6 +1014,7 @@ public class Decks {
 
     /**
      * Return a new dynamic deck and set it as the current deck.
+     * 返回一个新的动态牌组，有称为过滤牌组
      */
     public long newDyn(String name) {
         long did = id(name, defaultDynamicDeck);
@@ -1004,7 +1022,7 @@ public class Decks {
         return did;
     }
 
-
+    //这个牌组是动态的吗？是过滤的吗？
     public boolean isDyn(long did) {
         try {
             return get(did).getInt("dyn") != 0;
@@ -1020,7 +1038,7 @@ public class Decks {
     * ***********************************************************
     */
 
-
+    //获得当前牌组的描述信息；
     public String getActualDescription() {
     	return current().optString("desc","");
     }

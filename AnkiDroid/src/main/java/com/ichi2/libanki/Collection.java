@@ -163,7 +163,7 @@ public class Collection {
         }
     }
 
-
+    // 获得项目目录下collection.anki2文件，取出collection这个字符串；
     public String name() {
         String n = (new File(mPath)).getName().replace(".anki2", "");
         // TODO:
